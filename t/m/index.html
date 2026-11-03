@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw0wf8bm">
+<link rel="stylesheet" href="../../style.css?v=mw0xks7d">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -76,7 +76,7 @@ body { overflow: auto; }
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw0wf8bm"></script>
+<script src="../../geo.js?v=mw0xks7d"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -142,9 +142,11 @@ async function unlock(code, silent) {
     const F = await getFile(), slot = await slotFor(F, code);
     if (!slot) throw silent ? "stopped" : "code";
     if (now() >= slot.e) throw "expired";
-    const T = await expand(await openBody(F, slot));
+    // A code made ahead for a later trip opens from its start (the arrival day).
+    if (slot.s && now() < slot.s) { store.del(); $("msg").textContent = "هذا الرقم يبدأ " + new Date(slot.s).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }) + ". افتح الخريطة في وقتها."; return; }
+    const raw = await openBody(F, slot), daysSeen = JSON.stringify(raw.days || []), T = await expand(raw);
     store.set(code); T.until = slot.e;
-    render(T); watchExpiry(code, slot.e, F.v);
+    render(T); watchExpiry(code, slot.e, F.v, daysSeen);
   } catch (e) {
     store.del();
     $("msg").textContent = MSG[e] || MSG.code;
@@ -157,7 +159,7 @@ async function openBody(F, slot) {
 // The code stops working at its expiry, even with the page open; and while online the page checks every minute that
 // the agency has not stopped the code or deleted the map (either way it locks and asks for a new code), and picks up
 // changes to the hotel and bus times.
-function watchExpiry(code, until, seen) {
+function watchExpiry(code, until, seen, daysSeen) {
   const lock = why => { store.del(); try { sessionStorage.setItem("map-expired", ID + "|" + why); } catch {} location.reload(); };
   const tick = () => {
     if (now() >= until) return lock("expired");
@@ -167,7 +169,9 @@ function watchExpiry(code, until, seen) {
     if (!navigator.onLine) return;
     try {
       const F = await getFile(), slot = await slotFor(F, code); if (!slot) return lock("stopped");
-      if (F.v !== seen) { seen = F.v; const B = await openBody(F, slot); cur.T.hotel = B.hotel; cur.T.bus = B.bus || []; showHotel(); busTick(); }
+      if (F.v !== seen) { seen = F.v; const B = await openBody(F, slot);
+        if (JSON.stringify(B.days || []) !== daysSeen) return location.reload(); // a new trip program: open it again
+        cur.T.hotel = B.hotel; cur.T.bus = B.bus || []; showHotel(); busTick(); }
       tick();
     } catch (e) { if (e === "gone") lock("gone"); }
   };
@@ -181,7 +185,7 @@ async function expand(B) {
   const S = r => ({ id: r[0], country: r[1], city: r[2], name: r[3], en: r[4], cat: r[5], gem: r[6] === 1, desc: r[7], lat: r[8], lng: r[9], img: r[10], unesco: r[11] === 1, wdesc: r[12] === 1 });
   B.area = B.places.map(S); delete B.places;
   const byId = new Map(B.area.map(s => [s.id, s]));
-  B.days = (B.days || []).map(d => ({ title: d.title || "", note: d.note || "",
+  B.days = (B.days || []).map(d => ({ title: d.title || "", note: d.note || "", date: d.date || "",
     sites: d.sites.map(x => { const s = byId.get(x.id || x); return s ? { ...s, note: x.note || "" } : null; }).filter(Boolean) }));
   return B;
 }
@@ -194,11 +198,13 @@ function render(T) {
   const B = brandOf(T); try { localStorage.setItem(BRAND, JSON.stringify(B)); } catch {}
   document.title = T.title + " | " + B.name;
   T.area = T.area || []; T.days = T.days || []; T.countries = T.countries || [];
+  // Today's day of the program opens first (by its date), otherwise day 1.
+  const today = new Date(now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10), first = Math.max(0, T.days.findIndex(d => d.date === today));
   $("lock").remove(); const el = $("trip"); el.style.display = "block";
   el.innerHTML = `<header><small>${B.logo ? `<img class="logo" src="${esc(B.logo)}" alt="">` : ""}${esc(B.name)}</small><h1>${esc(T.title)}</h1>
       <div>${T.traveler ? esc(T.traveler) + " · " : ""}<span id="valid"></span></div></header>
     <div class="busbar" id="busbar"></div>
-    <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === 0}">اليوم ${i + 1}</button>`).join("")}</nav>
+    <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === first}">اليوم ${i + 1}${d.date ? " · " + esc(dayShort(d.date)) : ""}</button>`).join("")}</nav>
     <div id="tmap"></div><div id="day"></div>
     <section class="apps" id="busCard" hidden><h2>🚌 مواعيد الباص</h2><ul class="buslist" id="busList"></ul>
       <p>الخريطة ترن قبل موعد الباص بـ 15 و 5 دقائق وهي مفتوحة. ولو قفلت الشاشة أو ما عندك إنترنت، أضف المواعيد لتقويم جوالك فيرن لك التقويم في وقتها.</p>
@@ -236,7 +242,7 @@ function render(T) {
     L.DomEvent.on(b, "click", e => { L.DomEvent.stop(e); startLocate(); }); return b; } });
   map.addControl(new Locate());
   $("locBtn").addEventListener("click", startLocate);
-  cur.T = T; T.days.length ? showDay(T, 0) : showArea(T);
+  cur.T = T; T.days.length ? showDay(T, first) : showArea(T);
   showHotel(); busTick(); setInterval(busTick, 15000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("../../sw.js", { scope: "../../" }).catch(() => {});
 }
@@ -283,7 +289,7 @@ function showDay(T, i) {
   d.sites.forEach((s, n) => L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [28, 28], html: `<div class="npin">${n + 1}</div>` }) })
     .bindPopup(`<b>${esc(s.name)}</b>`).addTo(layer));
   if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 14 });
-  $("day").innerHTML = `<div class="day-head"><h2>اليوم ${i + 1}${d.title ? ": " + esc(d.title) : ""}</h2>${d.note ? `<p>${esc(d.note)}</p>` : ""}</div>`
+  $("day").innerHTML = `<div class="day-head"><h2>اليوم ${i + 1}${d.title ? ": " + esc(d.title) : ""}</h2>${d.date ? `<p>📅 ${esc(dayLong(d.date))}</p>` : ""}${d.note ? `<p>${esc(d.note)}</p>` : ""}</div>`
     + d.sites.map((s, n) => (n ? `<div class="leg">↓ ${km(d.sites[n - 1], s).toFixed(1)} كم</div>` : "") + `<article class="stop">
       ${s.img ? `<img src="${esc(s.img)}" alt="${esc(s.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
       <div class="body"><h3><span class="num">${n + 1}</span>${esc(s.name)}</h3>
@@ -296,6 +302,8 @@ function showDay(T, i) {
 // My location: blue dot, distance and driving / walking time to each stop of the shown day, nearest stop marked.
 // "Go" opens the offline guide screen (GPS + compass), from the map popups, area cards and day stops.
 // Inline onclick, because the map stops clicks inside its popups from reaching the page.
+const dayShort = s => new Date(s + "T12:00").toLocaleDateString("ar", { day: "numeric", month: "short" });
+const dayLong = s => new Date(s + "T12:00").toLocaleDateString("ar", { weekday: "long", day: "numeric", month: "long" });
 function goTo(k, n) { Geo.guide(k === "a" ? area.list[n] : cur.T.days[cur.i].sites[n]); }
 function startLocate() { Geo.locate(map, updateEta); }
 async function updateEta(me) {
@@ -386,7 +394,7 @@ async function saveOffline(T) {
     if (!("serviceWorker" in navigator) || !window.caches) throw 0;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw0wf8bm", "../../vendor/leaflet.css", "../../style.css?v=mw0wf8bm", "manifest.webmanifest"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw0xks7d", "../../vendor/leaflet.css", "../../style.css?v=mw0xks7d", "manifest.webmanifest"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));
