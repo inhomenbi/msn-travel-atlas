@@ -148,7 +148,7 @@ const Geo = (() => {
       catch { $g(".g-awake").textContent = "تعذر إبقاء الشاشة مضاءة (وضع توفير الطاقة؟)."; } };
     const onVis = () => { if (document.visibilityState === "visible") awake(); };
     awake(); document.addEventListener("visibilitychange", onVis);
-    L.tileLayer(location.protocol === "file:" ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png" : "https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, subdomains: "abcd" }).addTo(map);
+    L.tileLayer(location.protocol === "file:" ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}" : "https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
     L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 30], html: '<div class="g-dest">🏁</div>' }) }).addTo(map);
     // You: blue dot with a cone showing the way you face (GPS course while moving, else the compass).
     const youIcon = L.divIcon({ className: "", iconSize: [44, 44], html: '<div class="me-wrap"><div class="me-cone" hidden></div><div class="me"></div></div>' });
