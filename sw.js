@@ -3,6 +3,9 @@
 const RUNTIME = "trip-runtime", MAX = 1500;
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
+// A bus alert notification brings the map page back to the front.
+self.addEventListener("notificationclick", e => { e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window" }).then(cs => cs.length && cs[0].focus())); });
 const isAsset = u => /tile\.openstreetmap\.org|wikimedia\.org|fonts\.(googleapis|gstatic)\.com/.test(u.hostname);
 async function trim() {
   const c = await caches.open(RUNTIME), keys = await c.keys();

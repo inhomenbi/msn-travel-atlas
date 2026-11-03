@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw09br6l">
+<link rel="stylesheet" href="../../style.css?v=mw09onw2">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -54,6 +54,14 @@ body { overflow: auto; }
 .apps { background: var(--panel); margin: 12px 16px; border-radius: var(--radius); border: 1px solid var(--line); padding: 14px 16px; }
 .apps h2 { margin: 0 0 4px; font-size: 16px; } .apps p { margin: 0 0 10px; color: var(--muted); font-size: 13.5px; line-height: 1.8; }
 .apps .row { display: flex; gap: 8px; flex-wrap: wrap; } .apps .btn { flex: 1; min-width: 150px; }
+.hpin { font-size: 26px; line-height: 32px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+.busbar { display: none; align-items: center; gap: 10px; background: #fff4d6; color: #5c3d00; border-bottom: 1px solid #f0d58c; padding: 10px 16px; font-size: 14.5px; line-height: 1.6; }
+.busbar.on { display: flex; } .busbar b { font-size: 16px; } .busbar.soon { background: #ffe1dc; color: #7a1408; border-color: #f3b2a8; }
+.buslist { margin: 0 0 10px; padding: 0; list-style: none; } .buslist li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.buslist li.past { color: var(--muted); text-decoration: line-through; }
+.alarm { position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center; padding: 24px; background: rgba(160, 20, 8, .94); color: #fff; text-align: center; }
+.alarm .box { width: min(420px, 100%); } .alarm .big { font-size: 64px; } .alarm h2 { margin: 8px 0; font-size: 26px; } .alarm p { font-size: 18px; line-height: 1.8; margin: 0 0 20px; }
+.alarm .btn { width: 100%; height: 52px; font-size: 18px; background: #fff; color: #7a1408; }
 </style>
 </head>
 <body>
@@ -68,7 +76,7 @@ body { overflow: auto; }
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw09br6l"></script>
+<script src="../../geo.js?v=mw09onw2"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -106,7 +114,8 @@ else {
 function b64(s) { return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
 async function getFile() {
   try {
-    const r = await fetch(FILE + "?t=" + Date.now(), { cache: "no-store" });
+    // "no-cache" asks the server every time but downloads the file only when it changed (the page checks every minute).
+    const r = await fetch(FILE, { cache: "no-cache" });
     if (r.status === 404) { if (window.caches) caches.delete(CACHE); throw "gone"; }
     if (!r.ok) throw 0;
     const net = Date.parse(r.headers.get("Date")); if (net > netSeen()) try { localStorage.setItem(NET, net); } catch {}
@@ -133,18 +142,22 @@ async function unlock(code, silent) {
     const F = await getFile(), slot = await slotFor(F, code);
     if (!slot) throw silent ? "stopped" : "code";
     if (now() >= slot.e) throw "expired";
-    const dk = await crypto.subtle.importKey("raw", b64(slot.k), "AES-GCM", false, ["decrypt"]);
-    const T = await expand(JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(F.v) }, dk, b64(F.d)))));
+    const T = await expand(await openBody(F, slot));
     store.set(code); T.until = slot.e;
-    render(T); watchExpiry(code, slot.e);
+    render(T); watchExpiry(code, slot.e, F.v);
   } catch (e) {
     store.del();
     $("msg").textContent = MSG[e] || MSG.code;
   }
 }
-// The code stops working at its expiry, even with the page open; and while online the page checks every few minutes
-// that the agency has not stopped the code or deleted the map. Either way it locks and asks for a new code.
-function watchExpiry(code, until) {
+async function openBody(F, slot) {
+  const dk = await crypto.subtle.importKey("raw", b64(slot.k), "AES-GCM", false, ["decrypt"]);
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(F.v) }, dk, b64(F.d))));
+}
+// The code stops working at its expiry, even with the page open; and while online the page checks every minute that
+// the agency has not stopped the code or deleted the map (either way it locks and asks for a new code), and picks up
+// changes to the hotel and bus times.
+function watchExpiry(code, until, seen) {
   const lock = why => { store.del(); try { sessionStorage.setItem("map-expired", ID + "|" + why); } catch {} location.reload(); };
   const tick = () => {
     if (now() >= until) return lock("expired");
@@ -152,10 +165,13 @@ function watchExpiry(code, until) {
   };
   const recheck = async () => {
     if (!navigator.onLine) return;
-    try { const F = await getFile(); if (!(await slotFor(F, code))) lock("stopped"); else tick(); }
-    catch (e) { if (e === "gone") lock("gone"); }
+    try {
+      const F = await getFile(), slot = await slotFor(F, code); if (!slot) return lock("stopped");
+      if (F.v !== seen) { seen = F.v; const B = await openBody(F, slot); cur.T.hotel = B.hotel; cur.T.bus = B.bus || []; showHotel(); busTick(); }
+      tick();
+    } catch (e) { if (e === "gone") lock("gone"); }
   };
-  tick(); setInterval(tick, 30000); setInterval(recheck, 5 * 60000);
+  tick(); setInterval(tick, 30000); setInterval(recheck, 60000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { tick(); recheck(); } });
 }
 // Region map: the area's places are sealed in the map file with its settings (the full atlas is not public).
@@ -173,7 +189,7 @@ async function expand(B) {
 if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.open(k).then(c => c.keys().then(rs => rs.forEach(r => { if (/\/data\/sites\.json/.test(r.url)) c.delete(r); }))))).catch(() => {});
 
 function km(a, b) { const r = Math.PI / 180, x = Math.sin((b.lat - a.lat) * r / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin((b.lng - a.lng) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); }
-let map, layer, cur = { T: null, i: 0 }, geoAt = null, geoTimes = null;
+let map, layer, fixed, cur = { T: null, i: 0 }, geoAt = null, geoTimes = null;
 function render(T) {
   const B = brandOf(T); try { localStorage.setItem(BRAND, JSON.stringify(B)); } catch {}
   document.title = T.title + " | " + B.name;
@@ -181,20 +197,29 @@ function render(T) {
   $("lock").remove(); const el = $("trip"); el.style.display = "block";
   el.innerHTML = `<header><small>${B.logo ? `<img class="logo" src="${esc(B.logo)}" alt="">` : ""}${esc(B.name)}</small><h1>${esc(T.title)}</h1>
       <div>${T.traveler ? esc(T.traveler) + " · " : ""}<span id="valid"></span></div></header>
+    <div class="busbar" id="busbar"></div>
     <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === 0}">اليوم ${i + 1}</button>`).join("")}</nav>
     <div id="tmap"></div><div id="day"></div>
+    <section class="apps" id="busCard" hidden><h2>🚌 مواعيد الباص</h2><ul class="buslist" id="busList"></ul>
+      <p>الخريطة ترن قبل موعد الباص بـ 15 و 5 دقائق وهي مفتوحة. ولو قفلت الشاشة أو ما عندك إنترنت، أضف المواعيد لتقويم جوالك فيرن لك التقويم في وقتها.</p>
+      <div class="row"><button class="btn" id="busCal">📅 أضف المواعيد لتقويم جوالي</button><button class="btn ghost" id="busOn">🔔 فعّل صوت التنبيه</button></div>
+      <p class="offline-note" id="busNote" style="padding:8px 0 0"></p></section>
     <section class="apps"><h2>بدون إنترنت</h2>
       <p>للملاحة والـ GPS بدون نت: ثبّت تطبيق <b>maps.me</b> أو <b>Organic Maps</b> وحمّل فيه خريطة الدولة، ثم اضغط الزر تحت وافتح الملف بالتطبيق، فتنضاف محطات رحلتك وكل أماكن المنطقة للمفضلة وتقدر توصل لها خطوة بخطوة بدون إنترنت.</p>
       <div class="row"><button class="btn" id="kml">🗺️ محطات الرحلة والمنطقة لتطبيق الخرائط</button>
       <button class="btn ghost" id="save">حفظ هذه الصفحة بدون إنترنت</button></div></section>
     <p class="offline-note" id="off"></p>
-    <div class="dock">${T.phone ? `<a class="btn" href="https://wa.me/${esc(T.phone.replace(/\D/g, ""))}" target="_blank" rel="noopener">تواصل معنا واتساب</a>` : ""}
+    <div class="dock">${T.phone ? `<a class="btn" href="https://wa.me/${esc(T.phone.replace(/\D/g, ""))}" target="_blank" rel="noopener">💬 واتساب</a>` : ""}
+      <button class="btn ghost" id="hotelBtn" hidden>🏨 الفندق</button>
       <button class="btn ghost" id="locBtn">📍 موقعي</button>
 </div>`;
   map = L.map("tmap", { zoomControl: false });
   L.control.zoom({ position: "topleft" }).addTo(map);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
-  layer = L.layerGroup().addTo(map);
+  layer = L.layerGroup().addTo(map); fixed = L.layerGroup().addTo(map);
+  $("hotelBtn").addEventListener("click", goHotel);
+  $("busCal").addEventListener("click", () => busCalendar(T, B));
+  $("busOn").addEventListener("click", busAllow);
   $("days").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (!b) return;
     for (const x of $("days").children) x.setAttribute("aria-pressed", x === b);
     const i = +b.dataset.i; i < 0 ? showArea(T) : showDay(T, i); });
@@ -204,13 +229,15 @@ function render(T) {
   $("kml").addEventListener("click", () => Geo.download("رحلة " + T.title, Geo.kml(B.name + " - " + T.title, T.days.flatMap((d, i) => d.sites.map((s, n) => ({
     name: `اليوم ${i + 1} - ${n + 1}. ${s.name}`, desc: [s.desc, s.note && "ملاحظة: " + s.note, `${s.city} - ${s.country}`].filter(Boolean).join("\n\n"),
     lat: s.lat, lng: s.lng, color: COLORS[i % COLORS.length] })))
-    .concat(T.area.map(s => ({ name: (s.gem ? "★ " : "") + s.name, desc: `${s.desc}\n\n${s.city} - ${s.country} · ${s.cat}`, lat: s.lat, lng: s.lng, color: APP_COLOR[s.cat] }))))));
+    .concat(T.area.map(s => ({ name: (s.gem ? "★ " : "") + s.name, desc: `${s.desc}\n\n${s.city} - ${s.country} · ${s.cat}`, lat: s.lat, lng: s.lng, color: APP_COLOR[s.cat] })))
+    .concat(T.hotel ? [{ name: "🏨 " + T.hotel.name, desc: "فندقك", lat: T.hotel.lat, lng: T.hotel.lng, color: "red" }] : []))));
   const Locate = L.Control.extend({ options: { position: "topleft" }, onAdd: () => {
     const b = L.DomUtil.create("button", "locate leaflet-bar"); b.title = "موقعي"; b.setAttribute("aria-label", "موقعي"); b.textContent = "◎";
     L.DomEvent.on(b, "click", e => { L.DomEvent.stop(e); startLocate(); }); return b; } });
   map.addControl(new Locate());
   $("locBtn").addEventListener("click", startLocate);
   cur.T = T; T.days.length ? showDay(T, 0) : showArea(T);
+  showHotel(); busTick(); setInterval(busTick, 15000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("../../sw.js", { scope: "../../" }).catch(() => {});
 }
 // Area map (pocket guide): every atlas place in the trip's countries; tap one and go. Sorted nearest first once located.
@@ -286,6 +313,72 @@ async function updateEta(me) {
   paint();
   if (moved) { const day = cur.i; geoAt = me; const t = await Geo.times(me, stops.slice(0, 50)); if (day === cur.i) { geoTimes = t; paint(); } }
 }
+// Hotel: always on the map, and "🏨 الفندق" opens the guide screen back to it.
+function goHotel() { const h = cur.T.hotel; if (h) Geo.guide({ name: h.name, city: "فندقك", lat: h.lat, lng: h.lng }); }
+function showHotel() {
+  const h = cur.T.hotel; fixed.clearLayers(); $("hotelBtn").hidden = !h; if (!h) return;
+  L.marker([h.lat, h.lng], { zIndexOffset: 1000, icon: L.divIcon({ className: "", iconSize: [32, 32], html: '<div class="hpin">🏨</div>' }) })
+    .bindPopup(`<div class="pop"><b>${esc(h.name)}</b><div>فندقك</div>${Geo.last ? Geo.line(Geo.last, h) : ""}<button class="btn" onclick="goHotel()">🏨 ارجع للفندق</button></div>`).addTo(fixed);
+}
+// Bus departures set by the agency: a countdown bar, a list, and an alarm (sound, vibration, notification) 15 and 5
+// minutes before and at the time, while the page is open. A closed page cannot ring, so the times can also go into the
+// phone's calendar, which rings on its own, with no internet.
+const busFmt = t => new Date(t).toLocaleString("ar", { weekday: "long", hour: "numeric", minute: "2-digit" });
+const FIRED = "map-bus-" + ID;
+let audio = null;
+function showBus() {
+  const all = (cur.T.bus || []).slice().sort((a, b) => a.t - b.t), next = all.find(b => b.t > now() - 10 * 6e4);
+  $("busCard").hidden = !all.length;
+  $("busList").innerHTML = all.map(b => `<li class="${b.t < now() - 10 * 6e4 ? "past" : ""}">🚌 ${esc(busFmt(b.t))}${b.place ? " · " + esc(b.place) : ""}</li>`).join("");
+  const bar = $("busbar"), left = next && next.t - now();
+  bar.classList.toggle("on", !!next && left < 864e5); bar.classList.toggle("soon", !!next && left < 15 * 6e4);
+  if (next) bar.innerHTML = `<span style="font-size:24px">🚌</span><div><b>الباص يتحرك ${left > 0 ? "بعد " + fmtLeft(left) : "الحين"}</b><br>${esc(busFmt(next.t))}${next.place ? " من " + esc(next.place) : ""}</div>`;
+}
+function busTick() {
+  showBus(); let fired; try { fired = JSON.parse(localStorage.getItem(FIRED)) || []; } catch { fired = []; }
+  for (const b of cur.T.bus || []) {
+    if (now() >= b.t + 10 * 6e4) continue;
+    // Warnings due now (15 / 5 minutes before, at the time); one alarm even if the page was opened late and several are due.
+    const due = [15, 5, 0].filter(m => now() >= b.t - m * 6e4).map(m => b.t + "|" + m);
+    if (!due.length || due.every(k => fired.includes(k))) continue;
+    fired.push(...due.filter(k => !fired.includes(k))); try { localStorage.setItem(FIRED, JSON.stringify(fired.slice(-60))); } catch {}
+    return busAlarm(b);
+  }
+}
+function busAlarm(b) {
+  const title = b.t - now() >= 6e4 ? `الباص يتحرك بعد ${fmtLeft(b.t - now())}` : "الباص يتحرك الحين", body = (b.place ? "من " + b.place + ". " : "") + "توجّه للباص.";
+  document.querySelector(".alarm")?.remove();
+  const el = document.createElement("div"); el.className = "alarm"; el.setAttribute("role", "alertdialog");
+  el.innerHTML = `<div class="box"><div class="big">🚌</div><h2>${esc(title)}</h2><p>${esc(busFmt(b.t))}<br>${esc(body)}</p><button class="btn">تمام، رايح للباص</button></div>`;
+  document.body.append(el);
+  let n = 0; const ring = () => { beep(); navigator.vibrate?.([400, 200, 400, 200, 400]); if (++n < 6 && el.isConnected) setTimeout(ring, 4000); }; ring();
+  el.querySelector("button").onclick = () => { el.remove(); navigator.vibrate?.(0); };
+  if (window.Notification && Notification.permission === "granted") navigator.serviceWorker?.ready.then(r =>
+    r.showNotification("🚌 " + title, { body, tag: "bus-" + b.t, renotify: true, requireInteraction: true, vibrate: [400, 200, 400] })).catch(() => {});
+}
+function beep() {
+  try { audio ||= new (window.AudioContext || window.webkitAudioContext)(); audio.resume();
+    for (let i = 0; i < 3; i++) { const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + i * .35;
+      o.frequency.value = 880; o.connect(g); g.connect(audio.destination); g.gain.setValueAtTime(.4, t); g.gain.exponentialRampToValueAtTime(.001, t + .3); o.start(t); o.stop(t + .3); } } catch {}
+}
+// Phones only allow sound after a tap, and notifications after asking.
+document.addEventListener("pointerdown", () => { try { audio ||= new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {} }, { once: true });
+async function busAllow() {
+  beep();
+  let ok = false; if (window.Notification) ok = Notification.permission === "granted" || await Notification.requestPermission() === "granted";
+  $("busNote").textContent = ok ? "✓ تم. خلّ الصفحة مفتوحة وقت الجولة، وبتسمع صوت مثل هذا وتوصلك إشعار قبل موعد الباص."
+    : "✓ الصوت شغال وقت الصفحة مفتوحة. الإشعارات ما تشتغل في هذا المتصفح (في الآيفون لازم تضيف الصفحة للشاشة الرئيسية)، فالأضمن تضيف المواعيد لتقويم جوالك.";
+}
+function busCalendar(T, B) {
+  const up = (T.bus || []).filter(b => b.t > now()); if (!up.length) { $("busNote").textContent = "ما فيه مواعيد قادمة للباص حالياً."; return; }
+  const f = t => new Date(t).toISOString().replace(/[-:]/g, "").replace(/\.\d+/, ""), x = t => String(t).replace(/[\\;,]/g, "\\$&").replace(/\n/g, "\\n");
+  const alarm = m => ["BEGIN:VALARM", "ACTION:DISPLAY", `TRIGGER:-PT${m}M`, `DESCRIPTION:${x(`الباص يتحرك بعد ${m} دقيقة`)}`, "END:VALARM"];
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//MSN Travel//Map//AR", "METHOD:PUBLISH", ...up.flatMap(b => ["BEGIN:VEVENT", `UID:${ID}-${b.t}@msn-travel`,
+    `DTSTAMP:${f(Date.now())}`, `DTSTART:${f(b.t)}`, `DTEND:${f(b.t + 15 * 6e4)}`, `SUMMARY:${x("🚌 الباص يتحرك" + (b.place ? " من " + b.place : ""))}`,
+    `DESCRIPTION:${x(B.name + " - " + T.title)}`, ...alarm(15), ...alarm(5), "END:VEVENT"]), "END:VCALENDAR"].join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" })); a.download = "مواعيد الباص.ics"; a.click();
+  $("busNote").textContent = "افتح الملف اللي نزل واختر «إضافة للتقويم». إذا غيّرت الوكالة المواعيد، اضغط الزر مرة ثانية.";
+}
 // Saves this page, the photos and the map tiles already viewed. Map tiles are kept as you browse the map online.
 async function saveOffline(T) {
   const btn = $("save"); btn.disabled = true; btn.textContent = "جارٍ الحفظ…";
@@ -293,7 +386,7 @@ async function saveOffline(T) {
     if (!("serviceWorker" in navigator) || !window.caches) throw 0;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw09br6l", "../../vendor/leaflet.css", "../../style.css?v=mw09br6l", "manifest.webmanifest"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw09onw2", "../../vendor/leaflet.css", "../../style.css?v=mw09onw2", "manifest.webmanifest"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));
