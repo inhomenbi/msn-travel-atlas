@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>خريطتك السياحية | MSN Travel</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f4c5c">
+<link rel="manifest" href="manifest.webmanifest">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../vendor/leaflet.css">
+<link rel="stylesheet" href="../../style.css?v=mvzoflg1">
+<style>
+body { overflow: auto; }
+.lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
+.lock .box { background: var(--panel); border-radius: 20px; padding: 28px 24px; width: min(380px, 100%); text-align: center; box-shadow: var(--shadow); }
+.lock h1 { margin: 0 0 6px; font-size: 22px; color: var(--brand); }
+.lock p { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.lock input { width: 100%; height: 52px; font-size: 26px; letter-spacing: 8px; text-align: center; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); direction: ltr; }
+.lock .btn { width: 100%; margin-top: 12px; height: 48px; font-size: 16px; }
+.lock .msg { min-height: 22px; margin-top: 10px; color: var(--warn); font-size: 14px; }
+.trip { display: none; max-width: 980px; margin: 0 auto; padding-bottom: 90px; }
+.trip header { background: var(--brand); color: var(--brand-ink); padding: 22px 18px 18px; }
+.trip header small { opacity: .85; }
+.trip header h1 { margin: 4px 0; font-size: 24px; }
+.days { display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px; position: sticky; top: 0; background: var(--bg); z-index: 500; border-bottom: 1px solid var(--line); }
+.days .chip { white-space: nowrap; }
+#tmap { height: 46vh; min-height: 280px; }
+.day-head { padding: 16px 16px 4px; }
+.day-head h2 { margin: 0; font-size: 19px; } .day-head p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.stop { background: var(--panel); margin: 12px 16px; border-radius: var(--radius); overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.06); border: 1px solid var(--line); }
+.stop img { width: 100%; height: 220px; object-fit: cover; display: block; background: var(--line); }
+.stop .body { padding: 14px 16px 16px; }
+.stop h3 { margin: 0; font-size: 18px; display: flex; gap: 10px; align-items: center; }
+.num { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--brand); color: var(--brand-ink); display: grid; place-items: center; font-size: 14px; }
+.stop .meta { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+.stop p { margin: 0 0 12px; line-height: 1.85; }
+.leg { text-align: center; color: var(--muted); font-size: 12.5px; }
+.npin { width: 28px; height: 28px; border-radius: 50%; background: var(--brand); color: #fff; display: grid; place-items: center; font-weight: 700; border: 2px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); }
+.dock { position: fixed; bottom: 0; left: 0; right: 0; display: flex; gap: 8px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); z-index: 1000; justify-content: center; }
+.dock .btn { flex: 1; max-width: 300px; }
+.offline-note { font-size: 12.5px; color: var(--muted); padding: 0 16px; }
+.place { display: grid; grid-template-columns: 76px 1fr; gap: 12px; background: var(--panel); margin: 10px 16px; padding: 12px; border-radius: var(--radius); border: 1px solid var(--line); }
+.place h3 { margin: 0; font-size: 16px; } .place .meta { color: var(--muted); font-size: 12.5px; margin: 2px 0 4px; }
+.place p { margin: 4px 0 8px; font-size: 13.5px; line-height: 1.7; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.place .go { display: flex; gap: 8px; } .place .btn { height: 36px; padding: 0 12px; font-size: 13.5px; }
+.place.near { border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,.25); }
+.cats { display: flex; gap: 6px; overflow-x: auto; padding: 8px 16px 2px; }
+.cats .chip { white-space: nowrap; } .more { display: block; margin: 8px auto 16px; }
+.pop { text-align: right; min-width: 180px; } .pop img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; display: block; margin-bottom: 6px; }
+.pop .btn { height: 34px; margin-top: 8px; width: 100%; color: #fff; }
+.apps { background: var(--panel); margin: 12px 16px; border-radius: var(--radius); border: 1px solid var(--line); padding: 14px 16px; }
+.apps h2 { margin: 0 0 4px; font-size: 16px; } .apps p { margin: 0 0 10px; color: var(--muted); font-size: 13.5px; line-height: 1.8; }
+.apps .row { display: flex; gap: 8px; flex-wrap: wrap; } .apps .btn { flex: 1; min-width: 150px; }
+</style>
+</head>
+<body>
+<section class="lock" id="lock">
+  <div class="box">
+    <h1>خريطتك السياحية من MSN Travel</h1>
+    <p id="lockText">أدخل الرقم السري الذي أرسلته لك الوكالة لفتح خريطتك.</p>
+    <form id="form"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="الرقم السري" required>
+    <button class="btn" type="submit">افتح الخريطة</button></form>
+    <div class="msg" id="msg" role="alert"></div>
+  </div>
+</section>
+<main class="trip" id="trip"></main>
+<script src="../../vendor/leaflet.js"></script>
+<script src="../../geo.js?v=mvzoflg1"></script>
+<script>
+// Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
+// the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
+// sealed with a key derived from the code (PBKDF2-SHA256). When a code's time runs out the page locks itself and asks
+// for a new code. The file is fetched fresh when online and kept on the phone for offline use; a deleted map stops opening.
+const ID = location.hash.slice(1).replace(/[^\w-]/g, "");
+const $ = id => document.getElementById(id);
+const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const KEY = "map-code-" + ID, FILE = `k/${ID}.json`, CACHE = "trip-m-" + ID;
+// Clock that cannot be wound back: every time the page is online it keeps the internet time (the server's Date header),
+// and "now" is never earlier than the latest internet time seen. Setting the phone's date back after that does not
+// bring an expired code back to life.
+const NET = "map-net-time";
+const netSeen = () => { try { return +localStorage.getItem(NET) || 0; } catch { return 0; } };
+const now = () => Math.max(Date.now(), netSeen());
+const store = { get: () => { try { return localStorage.getItem(KEY); } catch { return null; } },
+  set: v => { try { localStorage.setItem(KEY, v); } catch {} }, del: () => { try { localStorage.removeItem(KEY); } catch {} } };
+const MSG = { code: "الرقم السري غير صحيح، حاول مرة أخرى.", expired: "انتهت صلاحية الرقم السري. اطلب رقماً جديداً من الوكالة وأدخله هنا.",
+  gone: "أوقفت الوكالة هذه الخريطة.", stopped: "أوقفت الوكالة هذا الرقم السري. اطلب رقماً جديداً وأدخله هنا.", offline: "اتصل بالإنترنت مرة واحدة لفتح الخريطة أول مرة.", data: "تعذر تحميل بيانات الخريطة. اتصل بالإنترنت ثم حاول." };
+const fmtLeft = ms => { const m = Math.max(0, Math.floor(ms / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
+  return [d && d + " يوم", h && h + " ساعة", (m % 60 || !(d || h)) && (m % 60) + " دقيقة"].filter(Boolean).join(" و").replace(/^0 دقيقة$/, "أقل من دقيقة"); };
+
+if (!ID) { $("lockText").textContent = "الرابط غير مكتمل. افتح الرابط كاملاً كما أرسلته لك الوكالة."; $("form").remove(); }
+else {
+  try { const [id, why] = (sessionStorage.getItem("map-expired") || "").split("|");
+    if (id === ID) { sessionStorage.removeItem("map-expired"); $("msg").textContent = MSG[why] || MSG.expired; } } catch {}
+  const saved = store.get(); if (saved) unlock(saved, true);
+  $("form").addEventListener("submit", e => { e.preventDefault(); unlock($("code").value.trim(), false); });
+}
+
+function b64(s) { return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
+async function getFile() {
+  try {
+    const r = await fetch(FILE + "?t=" + Date.now(), { cache: "no-store" });
+    if (r.status === 404) { if (window.caches) caches.delete(CACHE); throw "gone"; }
+    if (!r.ok) throw 0;
+    const net = Date.parse(r.headers.get("Date")); if (net > netSeen()) try { localStorage.setItem(NET, net); } catch {}
+    const j = await r.clone().json();
+    if (window.caches) caches.open(CACHE).then(c => c.put(FILE, r)).catch(() => {});
+    return j;
+  } catch (e) {
+    if (e === "gone") throw e;
+    const hit = window.caches && await caches.match(FILE); if (hit) return hit.json();
+    throw "offline";
+  }
+}
+// The code's slot in the map file (null when the code is wrong or was stopped by the agency).
+async function slotFor(F, code) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(code), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64(F.s), iterations: 310000, hash: "SHA-256" }, base,
+    { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  for (const [iv, w] of F.k) { try { return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(iv) }, key, b64(w)))); } catch {} }
+  return null;
+}
+async function unlock(code, silent) {
+  $("msg").textContent = silent ? "" : "جارٍ الفتح…";
+  try {
+    const F = await getFile(), slot = await slotFor(F, code);
+    if (!slot) throw silent ? "stopped" : "code";
+    if (now() >= slot.e) throw "expired";
+    const dk = await crypto.subtle.importKey("raw", b64(slot.k), "AES-GCM", false, ["decrypt"]);
+    const T = await expand(JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(F.v) }, dk, b64(F.d)))));
+    store.set(code); T.until = slot.e;
+    render(T); watchExpiry(code, slot.e);
+  } catch (e) {
+    store.del();
+    $("msg").textContent = MSG[e] || MSG.code;
+  }
+}
+// The code stops working at its expiry, even with the page open; and while online the page checks every few minutes
+// that the agency has not stopped the code or deleted the map. Either way it locks and asks for a new code.
+function watchExpiry(code, until) {
+  const lock = why => { store.del(); try { sessionStorage.setItem("map-expired", ID + "|" + why); } catch {} location.reload(); };
+  const tick = () => {
+    if (now() >= until) return lock("expired");
+    const v = $("valid"); if (v) v.textContent = "صلاحية الرقم السري: " + fmtLeft(until - now());
+  };
+  const recheck = async () => {
+    if (!navigator.onLine) return;
+    try { const F = await getFile(); if (!(await slotFor(F, code))) lock("stopped"); else tick(); }
+    catch (e) { if (e === "gone") lock("gone"); }
+  };
+  tick(); setInterval(tick, 30000); setInterval(recheck, 5 * 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { tick(); recheck(); } });
+}
+// Region map: the area's places are sealed in the map file with its settings (the full atlas is not public).
+// Place row: [id, country, city, name, en, cat, gem01, desc, lat, lng, img, unesco01, descFromWikipedia01]
+async function expand(B) {
+  if (!B.places) throw "data";
+  const S = r => ({ id: r[0], country: r[1], city: r[2], name: r[3], en: r[4], cat: r[5], gem: r[6] === 1, desc: r[7], lat: r[8], lng: r[9], img: r[10], unesco: r[11] === 1, wdesc: r[12] === 1 });
+  B.area = B.places.map(S); delete B.places;
+  const byId = new Map(B.area.map(s => [s.id, s]));
+  B.days = (B.days || []).map(d => ({ title: d.title || "", note: d.note || "",
+    sites: d.sites.map(x => { const s = byId.get(x.id || x); return s ? { ...s, note: x.note || "" } : null; }).filter(Boolean) }));
+  return B;
+}
+// Saved copies of the old public atlas data (before places were sealed in the map file) are removed from the phone.
+if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.open(k).then(c => c.keys().then(rs => rs.forEach(r => { if (/\/data\/sites\.json/.test(r.url)) c.delete(r); }))))).catch(() => {});
+
+function km(a, b) { const r = Math.PI / 180, x = Math.sin((b.lat - a.lat) * r / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin((b.lng - a.lng) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); }
+let map, layer, cur = { T: null, i: 0 }, geoAt = null, geoTimes = null;
+function render(T) {
+  T.area = T.area || []; T.days = T.days || []; T.countries = T.countries || [];
+  $("lock").remove(); const el = $("trip"); el.style.display = "block";
+  el.innerHTML = `<header><small>MSN Travel</small><h1>${esc(T.title)}</h1>
+      <div>${T.traveler ? esc(T.traveler) + " · " : ""}<span id="valid"></span></div></header>
+    <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === 0}">اليوم ${i + 1}</button>`).join("")}</nav>
+    <div id="tmap"></div><div id="day"></div>
+    <section class="apps"><h2>بدون إنترنت</h2>
+      <p>للملاحة والـ GPS بدون نت: ثبّت تطبيق <b>maps.me</b> أو <b>Organic Maps</b> وحمّل فيه خريطة الدولة، ثم اضغط الزر تحت وافتح الملف بالتطبيق، فتنضاف محطات رحلتك وكل أماكن المنطقة للمفضلة وتقدر توصل لها خطوة بخطوة بدون إنترنت.</p>
+      <div class="row"><button class="btn" id="kml">🗺️ محطات الرحلة والمنطقة لتطبيق الخرائط</button>
+      <button class="btn ghost" id="save">حفظ هذه الصفحة بدون إنترنت</button></div></section>
+    <p class="offline-note" id="off"></p>
+    <div class="dock">${T.phone ? `<a class="btn" href="https://wa.me/${esc(T.phone.replace(/\D/g, ""))}" target="_blank" rel="noopener">تواصل معنا واتساب</a>` : ""}
+      <button class="btn ghost" id="locBtn">📍 موقعي</button>
+</div>`;
+  map = L.map("tmap", { zoomControl: false });
+  L.control.zoom({ position: "topleft" }).addTo(map);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
+  layer = L.layerGroup().addTo(map);
+  $("days").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (!b) return;
+    for (const x of $("days").children) x.setAttribute("aria-pressed", x === b);
+    const i = +b.dataset.i; i < 0 ? showArea(T) : showDay(T, i); });
+  $("save").addEventListener("click", () => saveOffline(T));
+  // All trip stops as bookmarks for maps.me / Organic Maps, one colour per day.
+  const COLORS = ["red", "blue", "green", "purple", "orange", "pink", "brown", "yellow"];
+  $("kml").addEventListener("click", () => Geo.download("رحلة " + T.title, Geo.kml("MSN Travel - " + T.title, T.days.flatMap((d, i) => d.sites.map((s, n) => ({
+    name: `اليوم ${i + 1} - ${n + 1}. ${s.name}`, desc: [s.desc, s.note && "ملاحظة: " + s.note, `${s.city} - ${s.country}`].filter(Boolean).join("\n\n"),
+    lat: s.lat, lng: s.lng, color: COLORS[i % COLORS.length] })))
+    .concat(T.area.map(s => ({ name: (s.gem ? "★ " : "") + s.name, desc: `${s.desc}\n\n${s.city} - ${s.country} · ${s.cat}`, lat: s.lat, lng: s.lng, color: APP_COLOR[s.cat] }))))));
+  const Locate = L.Control.extend({ options: { position: "topleft" }, onAdd: () => {
+    const b = L.DomUtil.create("button", "locate leaflet-bar"); b.title = "موقعي"; b.setAttribute("aria-label", "موقعي"); b.textContent = "◎";
+    L.DomEvent.on(b, "click", e => { L.DomEvent.stop(e); startLocate(); }); return b; } });
+  map.addControl(new Locate());
+  $("locBtn").addEventListener("click", startLocate);
+  cur.T = T; T.days.length ? showDay(T, 0) : showArea(T);
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("../../sw.js", { scope: "../../" }).catch(() => {});
+}
+// Area map (pocket guide): every atlas place in the trip's countries; tap one and go. Sorted nearest first once located.
+const CAT_COLOR = { "تاريخي": "#a52714", "طبيعي": "#097138", "ديني": "#0288d1", "ثقافي": "#9c27b0", "متحف": "#f57c00",
+  "معماري": "#455a64", "ترفيهي": "#e91e63", "قرية/بلدة": "#795548", "تسوق": "#d4a017" };
+const APP_COLOR = { "تاريخي": "red", "طبيعي": "green", "ديني": "blue", "ثقافي": "purple", "متحف": "orange", "معماري": "brown",
+  "ترفيهي": "pink", "قرية/بلدة": "brown", "تسوق": "yellow" };
+const area = { cat: "", shown: 30, list: [], at: null };
+function showArea(T, keep) {
+  layer.clearLayers(); cur.i = -1; geoTimes = null; geoAt = null;
+  if (!keep) area.shown = 30;
+  const me = Geo.last;
+  area.list = T.area.filter(s => !area.cat || s.cat === area.cat);
+  if (me) area.list.sort((a, b) => Geo.km(me, a) - Geo.km(me, b));
+  for (const s of area.list) s.m = L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [16, 16],
+    html: `<div class="pin${s.gem ? " gem" : ""}" style="background:${CAT_COLOR[s.cat] || "#555"}"></div>` }) })
+    .bindPopup(() => `<div class="pop">${s.img ? `<img src="${esc(s.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<b>${esc(s.name)}</b>
+      <div>${esc(s.city)} · ${esc(s.cat)}</div>${Geo.last ? Geo.line(Geo.last, s) : ""}<button class="btn" onclick="goTo('a', ${area.list.indexOf(s)})">🧭 انطلق</button></div>`).addTo(layer);
+  if (!keep && area.list.length) map.fitBounds(L.latLngBounds(area.list.map(s => [s.lat, s.lng])).pad(0.1), { maxZoom: 13 });
+  const cats = [...new Set(T.area.map(s => s.cat))];
+  $("day").innerHTML = `<div class="day-head"><h2>خريطة المنطقة: ${esc((T.cities ? [...new Set(T.cities.map(c => c.split("|")[1]))] : T.countries).join(" و"))}</h2>
+      <p>${T.area.length} مكان سياحي. اضغط على أي مكان في الخريطة أو القائمة ثم «انطلق»${me ? "، والقائمة مرتبة من الأقرب إليك." : "، واضغط «📍 موقعي» لترتيبها من الأقرب إليك."}</p></div>
+    <div class="cats" id="cats"><button class="chip" data-cat="" aria-pressed="${!area.cat}">الكل</button>${cats.map(c => `<button class="chip" data-cat="${esc(c)}" aria-pressed="${area.cat === c}"><span class="pin" style="width:10px;height:10px;border-width:1px;background:${CAT_COLOR[c] || "#555"}"></span>${esc(c)}</button>`).join("")}</div>`
+    + area.list.slice(0, area.shown).map((s, n) => `<article class="place">
+      ${s.img ? `<img class="thumb" src="${esc(s.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<div class="thumb ph" style="background:${CAT_COLOR[s.cat] || "#555"}">${s.gem ? "★" : "◉"}</div>`}
+      <div><h3>${s.gem ? "★ " : ""}${esc(s.name)}</h3><div class="meta">${esc(s.city)} · ${esc(s.cat)}${s.unesco ? " · اليونسكو" : ""}</div>
+      <div class="eta-slot" data-n="${n}"></div><p>${esc(s.desc)}</p>${s.wdesc ? '<div class="meta">الوصف: ويكيبيديا (CC BY-SA)</div>' : ""}
+      <div class="go"><button class="btn" onclick="goTo('a', ${n})">🧭 انطلق</button><button class="btn ghost" data-show="${n}">على الخريطة</button></div></div></article>`).join("")
+    + (area.list.length > area.shown ? `<button class="btn ghost more" id="moreArea">عرض المزيد (${area.list.length - area.shown})</button>` : "");
+  $("cats").onclick = e => { const b = e.target.closest("[data-cat]"); if (b) { area.cat = b.dataset.cat; showArea(T); } };
+  $("day").onclick = e => {
+    if (e.target.id === "moreArea") { area.shown += 30; showArea(T, true); return; }
+    const b = e.target.closest("[data-show]"); if (!b) return;
+    const s = area.list[+b.dataset.show]; $("tmap").scrollIntoView({ behavior: "smooth" }); map.setView([s.lat, s.lng], 15); s.m.openPopup();
+  };
+  if (me) updateEta(me);
+}
+function showDay(T, i) {
+  $("day").onclick = null;
+  const d = T.days[i]; layer.clearLayers(); cur.i = i; geoTimes = null; geoAt = null;
+  const pts = d.sites.map(s => [s.lat, s.lng]);
+  if (pts.length > 1) L.polyline(pts, { color: "#0f4c5c", weight: 4, dashArray: "8 8" }).addTo(layer);
+  d.sites.forEach((s, n) => L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [28, 28], html: `<div class="npin">${n + 1}</div>` }) })
+    .bindPopup(`<b>${esc(s.name)}</b>`).addTo(layer));
+  if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 14 });
+  $("day").innerHTML = `<div class="day-head"><h2>اليوم ${i + 1}${d.title ? ": " + esc(d.title) : ""}</h2>${d.note ? `<p>${esc(d.note)}</p>` : ""}</div>`
+    + d.sites.map((s, n) => (n ? `<div class="leg">↓ ${km(d.sites[n - 1], s).toFixed(1)} كم</div>` : "") + `<article class="stop">
+      ${s.img ? `<img src="${esc(s.img)}" alt="${esc(s.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
+      <div class="body"><h3><span class="num">${n + 1}</span>${esc(s.name)}</h3>
+      <div class="eta-slot" data-n="${n}"></div>
+      <div class="meta">${esc(s.city)} - ${esc(s.country)} · ${esc(s.cat)}${s.unesco ? " · تراث عالمي (اليونسكو)" : ""}</div>
+      <p>${esc(s.desc)}</p>${s.note ? `<p><b>ملاحظة:</b> ${esc(s.note)}</p>` : ""}
+      <button class="btn" onclick="goTo('d', ${n})">🧭 انطلق إلى هنا</button></div></article>`).join("");
+  if (Geo.last) updateEta(Geo.last);
+}
+// My location: blue dot, distance and driving / walking time to each stop of the shown day, nearest stop marked.
+// "Go" opens the offline guide screen (GPS + compass), from the map popups, area cards and day stops.
+// Inline onclick, because the map stops clicks inside its popups from reaching the page.
+function goTo(k, n) { Geo.guide(k === "a" ? area.list[n] : cur.T.days[cur.i].sites[n]); }
+function startLocate() { Geo.locate(map, updateEta); }
+async function updateEta(me) {
+  if (cur.i < 0 && (!area.at || Geo.km(area.at, me) > 1)) { area.at = me; showArea(cur.T, true); return; } // re-sort nearest first
+  const stops = cur.i < 0 ? area.list.slice(0, area.shown) : cur.T.days[cur.i].sites;
+  const moved = !geoAt || Geo.km(geoAt, me) > 0.3;
+  const paint = () => {
+    let best = -1, bestD = Infinity;
+    stops.forEach((s, n) => { const d = Geo.km(me, s); if (d < bestD) { bestD = d; best = n; } });
+    document.querySelectorAll(".eta-slot").forEach(el => {
+      const n = +el.dataset.n; el.innerHTML = Geo.line(me, stops[n], geoTimes && geoTimes[n]) + (n === best ? '<span class="badge">الأقرب إليك</span>' : "");
+      el.closest(".stop, .place").classList.toggle("near", n === best);
+    });
+  };
+  paint();
+  if (moved) { const day = cur.i; geoAt = me; const t = await Geo.times(me, stops.slice(0, 50)); if (day === cur.i) { geoTimes = t; paint(); } }
+}
+// Saves this page, the photos and the map tiles already viewed. Map tiles are kept as you browse the map online.
+async function saveOffline(T) {
+  const btn = $("save"); btn.disabled = true; btn.textContent = "جارٍ الحفظ…";
+  try {
+    if (!("serviceWorker" in navigator) || !window.caches) throw 0;
+    await navigator.serviceWorker.ready;
+    const c = await caches.open(CACHE);
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mvzoflg1", "../../vendor/leaflet.css", "../../style.css?v=mvzoflg1", "manifest.webmanifest"]
+      .map(u => new URL(u, location.href).href);
+    const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
+    await Promise.all(urls.map(u => c.add(u).catch(() => {})));
+    await Promise.all(imgs.map(u => fetch(u, { mode: "no-cors", referrerPolicy: "no-referrer" }).then(r => c.put(u, r)).catch(() => {})));
+    btn.textContent = "✓ محفوظة على جهازك";
+    $("off").textContent = "تم الحفظ. ستفتح الرحلة وصورها بدون إنترنت، وتُحفظ أجزاء الخريطة التي تتصفحها الآن. وللملاحة بدون إنترنت استخدم زر «محطات الرحلة لتطبيق الخرائط».";
+  } catch { btn.disabled = false; btn.textContent = "حفظ للاستخدام بدون إنترنت"; $("off").textContent = "تعذر الحفظ على هذا المتصفح. جرّب Safari أو Chrome."; }
+}
+</script>
+</body>
+</html>
