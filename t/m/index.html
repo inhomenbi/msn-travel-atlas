@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>خريطتك السياحية | MSN Travel</title>
+<title>خريطتك السياحية</title>
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0f4c5c">
 <link rel="manifest" href="manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mvzoflg1">
+<link rel="stylesheet" href="../../style.css?v=mw09br6l">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -21,7 +21,9 @@ body { overflow: auto; }
 .lock .msg { min-height: 22px; margin-top: 10px; color: var(--warn); font-size: 14px; }
 .trip { display: none; max-width: 980px; margin: 0 auto; padding-bottom: 90px; }
 .trip header { background: var(--brand); color: var(--brand-ink); padding: 22px 18px 18px; }
-.trip header small { opacity: .85; }
+.trip header small { opacity: .85; display: flex; align-items: center; gap: 8px; }
+.logo { height: 40px; max-width: 120px; object-fit: contain; background: #fff; border-radius: 8px; padding: 3px; }
+.lock .logo { height: 64px; max-width: 180px; margin-bottom: 10px; }
 .trip header h1 { margin: 4px 0; font-size: 24px; }
 .days { display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px; position: sticky; top: 0; background: var(--bg); z-index: 500; border-bottom: 1px solid var(--line); }
 .days .chip { white-space: nowrap; }
@@ -57,7 +59,7 @@ body { overflow: auto; }
 <body>
 <section class="lock" id="lock">
   <div class="box">
-    <h1>خريطتك السياحية من MSN Travel</h1>
+    <img class="logo" id="lockLogo" alt="" hidden><h1 id="lockTitle">خريطتك السياحية</h1>
     <p id="lockText">أدخل الرقم السري الذي أرسلته لك الوكالة لفتح خريطتك.</p>
     <form id="form"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="الرقم السري" required>
     <button class="btn" type="submit">افتح الخريطة</button></form>
@@ -66,7 +68,7 @@ body { overflow: auto; }
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mvzoflg1"></script>
+<script src="../../geo.js?v=mw09br6l"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -82,6 +84,10 @@ const KEY = "map-code-" + ID, FILE = `k/${ID}.json`, CACHE = "trip-m-" + ID;
 const NET = "map-net-time";
 const netSeen = () => { try { return +localStorage.getItem(NET) || 0; } catch { return 0; } };
 const now = () => Math.max(Date.now(), netSeen());
+// The agency's name and logo are sealed with the map; kept on the phone after the first opening so the lock screen shows them.
+const BRAND = "map-brand-" + ID, brandOf = T => ({ name: T.brand || "MSN Travel", logo: T.logo || "" });
+try { const b = JSON.parse(localStorage.getItem(BRAND)); if (b) { $("lockTitle").textContent = "خريطتك السياحية من " + b.name; document.title = b.name;
+  if (b.logo) { $("lockLogo").src = b.logo; $("lockLogo").hidden = false; } } } catch {}
 const store = { get: () => { try { return localStorage.getItem(KEY); } catch { return null; } },
   set: v => { try { localStorage.setItem(KEY, v); } catch {} }, del: () => { try { localStorage.removeItem(KEY); } catch {} } };
 const MSG = { code: "الرقم السري غير صحيح، حاول مرة أخرى.", expired: "انتهت صلاحية الرقم السري. اطلب رقماً جديداً من الوكالة وأدخله هنا.",
@@ -169,9 +175,11 @@ if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.open(k).then(
 function km(a, b) { const r = Math.PI / 180, x = Math.sin((b.lat - a.lat) * r / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin((b.lng - a.lng) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); }
 let map, layer, cur = { T: null, i: 0 }, geoAt = null, geoTimes = null;
 function render(T) {
+  const B = brandOf(T); try { localStorage.setItem(BRAND, JSON.stringify(B)); } catch {}
+  document.title = T.title + " | " + B.name;
   T.area = T.area || []; T.days = T.days || []; T.countries = T.countries || [];
   $("lock").remove(); const el = $("trip"); el.style.display = "block";
-  el.innerHTML = `<header><small>MSN Travel</small><h1>${esc(T.title)}</h1>
+  el.innerHTML = `<header><small>${B.logo ? `<img class="logo" src="${esc(B.logo)}" alt="">` : ""}${esc(B.name)}</small><h1>${esc(T.title)}</h1>
       <div>${T.traveler ? esc(T.traveler) + " · " : ""}<span id="valid"></span></div></header>
     <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === 0}">اليوم ${i + 1}</button>`).join("")}</nav>
     <div id="tmap"></div><div id="day"></div>
@@ -193,7 +201,7 @@ function render(T) {
   $("save").addEventListener("click", () => saveOffline(T));
   // All trip stops as bookmarks for maps.me / Organic Maps, one colour per day.
   const COLORS = ["red", "blue", "green", "purple", "orange", "pink", "brown", "yellow"];
-  $("kml").addEventListener("click", () => Geo.download("رحلة " + T.title, Geo.kml("MSN Travel - " + T.title, T.days.flatMap((d, i) => d.sites.map((s, n) => ({
+  $("kml").addEventListener("click", () => Geo.download("رحلة " + T.title, Geo.kml(B.name + " - " + T.title, T.days.flatMap((d, i) => d.sites.map((s, n) => ({
     name: `اليوم ${i + 1} - ${n + 1}. ${s.name}`, desc: [s.desc, s.note && "ملاحظة: " + s.note, `${s.city} - ${s.country}`].filter(Boolean).join("\n\n"),
     lat: s.lat, lng: s.lng, color: COLORS[i % COLORS.length] })))
     .concat(T.area.map(s => ({ name: (s.gem ? "★ " : "") + s.name, desc: `${s.desc}\n\n${s.city} - ${s.country} · ${s.cat}`, lat: s.lat, lng: s.lng, color: APP_COLOR[s.cat] }))))));
@@ -285,7 +293,7 @@ async function saveOffline(T) {
     if (!("serviceWorker" in navigator) || !window.caches) throw 0;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mvzoflg1", "../../vendor/leaflet.css", "../../style.css?v=mvzoflg1", "manifest.webmanifest"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw09br6l", "../../vendor/leaflet.css", "../../style.css?v=mw09br6l", "manifest.webmanifest"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));
