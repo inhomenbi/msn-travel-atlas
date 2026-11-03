@@ -8,13 +8,8 @@
 <meta name="theme-color" content="#0f4c5c">
 <link rel="manifest" id="mf" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<script>
-// The home-screen icon must open this exact page with what follows # (the map id), so the manifest is made here.
-try { document.getElementById("mf").href = "data:application/manifest+json," + encodeURIComponent(JSON.stringify({ name: "قائد الرحلة - MSN Travel", short_name: "قائد الرحلة",
-  start_url: location.href, scope: new URL("./", location.href).href, display: "standalone", dir: "rtl", lang: "ar", background_color: "#0f4c5c", theme_color: "#0f4c5c" })); } catch {}
-</script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../style.css?v=mw10g9oh">
+<link rel="stylesheet" href="../style.css?v=mw11pswy">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -61,7 +56,11 @@ textarea { min-height: 80px; resize: vertical; } .row { display: flex; gap: 8px;
 // phones on the map, messages to the group and bus alerts, which the server pushes to the phones even when locked.
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-const [ID, SRVraw] = location.hash.slice(1).split("~"), SRV = SRVraw ? decodeURIComponent(SRVraw) : "https://api.msn-travel.workers.dev", KEY = "lead-" + ID;
+// What follows # (map id, and on older links ~server). A home-screen icon may open the page without it: the last one is remembered.
+const HASH = (() => { let h = location.hash.slice(1);
+  try { if (h) localStorage.setItem("lead-last", h); else if ((h = localStorage.getItem("lead-last") || "")) history.replaceState(null, "", "#" + h); } catch {}
+  return h; })();
+const [ID, SRVraw] = HASH.split("~"), SRV = SRVraw ? decodeURIComponent(SRVraw) : "https://api.msn-travel.workers.dev", KEY = "lead-" + ID;
 const when = t => new Date(t).toLocaleString("ar", { weekday: "long", hour: "numeric", minute: "2-digit" });
 const ago = t => { const m = Math.round((Date.now() - t) / 6e4); return m < 2 ? "الحين" : m < 60 ? `قبل ${m} دقيقة` : m < 1440 ? `قبل ${Math.round(m / 60)} ساعة` : `قبل ${Math.round(m / 1440)} يوم`; };
 let PIN = null;
@@ -71,8 +70,19 @@ async function api(path, body) {
     headers: { "content-type": "application/json", "x-lead": PIN || "" }, body: body ? JSON.stringify({ map: ID, ...body }) : undefined });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw j.error || "net"; return j;
 }
-if (!ID || !/^https?:\/\//.test(SRV)) { $("lockText").textContent = "الرابط غير مكتمل. افتح الرابط كاملاً كما أرسلته لك الوكالة."; $("form").remove(); }
+if (!ID || !/^https?:\/\//.test(SRV)) askLink();
 else { if (PIN) login(true); $("form").addEventListener("submit", e => { e.preventDefault(); PIN = $("pin").value.trim(); login(false); }); }
+// No link after # (a home-screen icon can open the page without it): the traveler pastes the link from the agency's message.
+function askLink() {
+  $("lockText").textContent = "الصق رابط صفحة القائد اللي أرسلته لك الوكالة (من رسالة الواتساب) واضغط «فتح». بعدها يفتح من الأيقونة على طول.";
+  const i = $("pin"); i.value = ""; i.removeAttribute("maxlength"); i.inputMode = "url"; i.placeholder = "الصق الرابط هنا"; i.dir = "ltr";
+  i.style.cssText = "font-size:14px;letter-spacing:0;text-align:left"; i.setAttribute("aria-label", "رابط صفحة القائد");
+  for (const x of document.querySelectorAll("#form .who")) x.remove();
+  $("form").querySelector("button").textContent = "فتح";
+  $("form").addEventListener("submit", e => { e.preventDefault(); const m = i.value.trim().match(/#([^\s#]+)/);
+    if (!m) { $("msg").textContent = "هذا موب رابط الخريطة. انسخ الرابط كاملاً من رسالة الوكالة."; return; }
+    location.hash = m[1]; location.reload(); });
+}
 async function login(silent) {
   $("msg").textContent = silent ? "" : "جارٍ الدخول…";
   try { const j = await api("/lead/check", {}); try { localStorage.setItem(KEY, PIN); } catch {}
