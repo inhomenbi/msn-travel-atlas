@@ -3,9 +3,29 @@
 const RUNTIME = "trip-runtime", MAX = 1500;
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
-// A bus alert notification brings the map page back to the front.
-self.addEventListener("notificationclick", e => { e.notification.close();
-  e.waitUntil(self.clients.matchAll({ type: "window" }).then(cs => cs.length && cs[0].focus())); });
+// A notification brings the map page back to the front (or opens it).
+self.addEventListener("notificationclick", e => { e.notification.close(); const page = e.notification.data && e.notification.data.page;
+  e.waitUntil(self.clients.matchAll({ type: "window" }).then(cs => cs.length ? cs[0].focus() : page && self.clients.openWindow(page))); });
+// Push from the agency's server (sent without content): fetch the new messages of each map on this phone and show them.
+// The map pages keep, in "push-cfg", the server address, this phone's device id and the last message seen, per map.
+const CFG = self.location.origin + "/__push-cfg", WHO = { lead: "قائد الرحلة", agency: "الوكالة", auto: "تذكير" };
+self.addEventListener("push", e => e.waitUntil((async () => {
+  let shown = 0;
+  try {
+    const c = await caches.open("push-cfg"), r = await c.match(CFG), cfg = r ? await r.json() : { devs: [] };
+    for (const d of cfg.devs) {
+      const j = await (await fetch(`${d.url}/inbox?dev=${encodeURIComponent(d.dev)}&since=${d.since || 0}`)).json();
+      for (const m of (j.msgs || []).slice(-3)) {
+        await self.registration.showNotification((m.kind === "msg" ? "📣 " + (WHO[m.who] || "الوكالة") : "🚌 الباص") + (d.title ? " · " + d.title : ""),
+          { body: m.text, tag: "m-" + d.id + "-" + m.id, data: { page: d.page }, vibrate: [400, 200, 400], requireInteraction: m.kind !== "msg" });
+        shown++;
+      }
+      if (j.msgs && j.msgs.length) d.since = j.msgs[j.msgs.length - 1].id;
+    }
+    await c.put(CFG, new Response(JSON.stringify(cfg), { headers: { "content-type": "application/json" } }));
+  } catch {}
+  if (!shown) await self.registration.showNotification("MSN Travel", { body: "وصلك تنبيه جديد. افتح خريطتك." });
+})()));
 const isAsset = u => /tile\.openstreetmap\.org|wikimedia\.org|fonts\.(googleapis|gstatic)\.com/.test(u.hostname);
 async function trim() {
   const c = await caches.open(RUNTIME), keys = await c.keys();

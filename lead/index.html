@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>قائد الرحلة | MSN Travel</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f4c5c">
+<link rel="manifest" id="mf" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script>
+// The home-screen icon must open this exact page with what follows # (the map id), so the manifest is made here.
+try { document.getElementById("mf").href = "data:application/manifest+json," + encodeURIComponent(JSON.stringify({ name: "قائد الرحلة - MSN Travel", short_name: "قائد الرحلة",
+  start_url: location.href, scope: new URL("./", location.href).href, display: "standalone", dir: "rtl", lang: "ar", background_color: "#0f4c5c", theme_color: "#0f4c5c" })); } catch {}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../style.css?v=mw0z082a">
+<style>
+body { overflow: auto; }
+.lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
+.lock .box { background: var(--panel); border-radius: 20px; padding: 28px 24px; width: min(380px, 100%); text-align: center; box-shadow: var(--shadow); }
+.lock h1 { margin: 0 0 6px; font-size: 22px; color: var(--brand); } .lock p { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.lock input { width: 100%; height: 52px; font-size: 26px; letter-spacing: 8px; text-align: center; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); direction: ltr; }
+.lock .btn { width: 100%; margin-top: 12px; height: 48px; font-size: 16px; } .msg { min-height: 22px; margin-top: 10px; color: var(--warn); font-size: 14px; }
+.app { display: none; max-width: 720px; margin: 0 auto; padding-bottom: 40px; }
+.app header { background: var(--brand); color: var(--brand-ink); padding: 20px 16px 16px; } .app header h1 { margin: 2px 0 0; font-size: 21px; } .app header small { opacity: .85; }
+.card { background: var(--panel); margin: 12px 16px; border-radius: var(--radius); border: 1px solid var(--line); padding: 14px 16px; }
+.card h2 { margin: 0 0 8px; font-size: 16px; } .note { color: var(--muted); font-size: 13px; line-height: 1.8; }
+textarea, input, select { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; background: var(--bg); color: var(--ink); }
+textarea { min-height: 80px; resize: vertical; } .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; } .row > * { flex: 1; min-width: 120px; }
+.row .btn { flex: none; } .btn.wide { width: 100%; margin-top: 8px; height: 46px; }
+.quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .quick .chip { font-size: 13.5px; }
+.list { list-style: none; margin: 0; padding: 0; } .list li { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+.list li > div { flex: 1; min-width: 0; } .list small { display: block; color: var(--muted); font-size: 12px; }
+.list .btn { height: 32px; padding: 0 10px; font-size: 13px; } .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.tag.on { background: #e7f4ea; color: var(--ok); } .tag.off { background: #fde8e6; color: var(--warn); }
+.ok { color: var(--ok); font-size: 14px; min-height: 20px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<section class="lock" id="lock"><div class="box"><h1>صفحة قائد الرحلة</h1><p id="lockText">أدخل رمز القائد اللي أرسلته لك الوكالة.</p>
+  <form id="form"><input id="pin" inputmode="numeric" maxlength="12" aria-label="رمز القائد" required><button class="btn" type="submit">دخول</button></form>
+  <div class="msg" id="msg" role="alert"></div></div></section>
+<main class="app" id="app">
+  <header><small>قائد الرحلة</small><h1 id="title"></h1><div id="count"></div></header>
+  <section class="card"><h2>🚌 تنبيه الباص</h2>
+    <p class="note" style="margin:0">يوصل التنبيه لكل المسافرين حتى والجوال مقفل، ويذكّرهم قبل الموعد بـ 15 و 5 دقائق ووقت التحرك.</p>
+    <div class="quick" id="quick"><button class="chip" data-min="10">بعد 10 دقائق</button><button class="chip" data-min="15">بعد 15 دقيقة</button><button class="chip" data-min="30">بعد 30 دقيقة</button><button class="chip" data-min="60">بعد ساعة</button></div>
+    <div class="row"><input id="busAt" type="datetime-local" dir="ltr" aria-label="وقت التحرك"><input id="busPlace" placeholder="مكان التجمع (مثال: بوابة المتحف)"></div>
+    <button class="btn wide" id="busSend">أرسل تنبيه الباص</button><div class="ok" id="busOk"></div></section>
+  <section class="card"><h2>📣 رسالة للمجموعة</h2>
+    <textarea id="text" maxlength="500" placeholder="مثال: الغداء الساعة 1:30 في المطعم المقابل للفندق"></textarea>
+    <button class="btn wide" id="send">إرسال للكل</button><div class="ok" id="sendOk"></div></section>
+  <section class="card"><h2>👥 المسافرون</h2><div class="note" id="codes"></div><ul class="list" id="devs"></ul>
+    <p class="note">«بدون تنبيهات» يعني المسافر ما سمح بالتنبيهات بعد، فما يوصله شي والجوال مقفل. «إيقاف» يقفل الخريطة على ذاك الجوال ويفضّي مكانه.</p></section>
+  <section class="card"><h2>🕘 آخر الرسائل</h2><ul class="list" id="msgs"></ul></section>
+  <p class="note" style="text-align:center"><button class="chip" id="out">خروج</button></p>
+</main>
+<script>
+// Trip leader page lead/#<map id>~<server address>: the leader code (only its hash is on the server) unlocks the list of
+// phones on the map, messages to the group and bus alerts, which the server pushes to the phones even when locked.
+const $ = id => document.getElementById(id);
+const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const [ID, SRVraw] = location.hash.slice(1).split("~"), SRV = decodeURIComponent(SRVraw || ""), KEY = "lead-" + ID;
+const when = t => new Date(t).toLocaleString("ar", { weekday: "long", hour: "numeric", minute: "2-digit" });
+const ago = t => { const m = Math.round((Date.now() - t) / 6e4); return m < 2 ? "الحين" : m < 60 ? `قبل ${m} دقيقة` : m < 1440 ? `قبل ${Math.round(m / 60)} ساعة` : `قبل ${Math.round(m / 1440)} يوم`; };
+let PIN = null;
+try { PIN = localStorage.getItem(KEY); } catch {}
+async function api(path, body) {
+  const r = await fetch(SRV + path + (body ? "" : "?map=" + encodeURIComponent(ID)), { method: body ? "POST" : "GET",
+    headers: { "content-type": "application/json", "x-lead": PIN || "" }, body: body ? JSON.stringify({ map: ID, ...body }) : undefined });
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw j.error || "net"; return j;
+}
+if (!ID || !/^https?:\/\//.test(SRV)) { $("lockText").textContent = "الرابط غير مكتمل. افتح الرابط كاملاً كما أرسلته لك الوكالة."; $("form").remove(); }
+else { if (PIN) login(true); $("form").addEventListener("submit", e => { e.preventDefault(); PIN = $("pin").value.trim(); login(false); }); }
+async function login(silent) {
+  $("msg").textContent = silent ? "" : "جارٍ الدخول…";
+  try { const j = await api("/lead/check", {}); try { localStorage.setItem(KEY, PIN); } catch {}
+    $("lock").remove(); $("app").style.display = "block"; $("title").textContent = j.title; document.title = j.title + " | قائد الرحلة"; load(); setInterval(load, 30000);
+  } catch (e) { $("msg").textContent = e === "lead" ? "رمز القائد غير صحيح." : "تعذر الاتصال. تأكد من الإنترنت وحاول مرة ثانية."; if (e === "lead") try { localStorage.removeItem(KEY); } catch {} }
+}
+async function load() {
+  if (document.hidden) return;
+  let j; try { j = await api("/lead/devices"); } catch { return; }
+  const by = {}; for (const d of j.devices) (by[d.h] ||= []).push(d);
+  const live = j.codes.filter(c => !c.off && c.e > Date.now());
+  $("count").textContent = `${j.devices.length} جوال · ${j.devices.filter(d => d.push).length} فعّلوا التنبيهات`;
+  $("codes").innerHTML = live.map(c => `رقم سري ${esc(c.h)}…: ${(by[c.h] || []).length} من ${c.n} جوال`).join("<br>");
+  $("devs").innerHTML = j.devices.map(d => `<li><div>${esc(d.name || "بدون اسم")}<small>دخل ${esc(ago(d.at))} · آخر ظهور ${esc(ago(d.seen))}</small></div>
+    <span class="tag ${d.push ? "on" : "off"}">${d.push ? "🔔 تنبيهات" : "بدون تنبيهات"}</span><button class="btn ghost" data-kick="${esc(d.k)}">إيقاف</button></li>`).join("") || '<li class="note">ما دخل أحد بعد.</li>';
+  $("msgs").innerHTML = j.msgs.slice().reverse().map(m => `<li><div>${esc(m.text)}<small>${esc(when(m.at))}${m.who === "lead" ? " · أنت" : m.who === "agency" ? " · الوكالة" : ""}</small></div></li>`).join("") || '<li class="note">لا توجد رسائل بعد.</li>';
+}
+const localInput = t => new Date(t - new Date(t).getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
+$("busAt").value = localInput(Date.now() + 30 * 6e4);
+$("quick").addEventListener("click", e => { const b = e.target.closest("[data-min]"); if (b) $("busAt").value = localInput(Date.now() + b.dataset.min * 6e4); });
+const done = (el, t) => { $(el).textContent = t; setTimeout(() => { $(el).textContent = ""; }, 4000); };
+$("busSend").addEventListener("click", async () => {
+  const t = new Date($("busAt").value).getTime(); if (!(t > Date.now())) return done("busOk", "اختر وقتاً قادماً.");
+  $("busSend").disabled = true;
+  try { await api("/lead/bus", { t, place: $("busPlace").value.trim() }); done("busOk", "✓ وصل التنبيه للمسافرين: الباص يتحرك " + when(t)); load(); }
+  catch { done("busOk", "تعذر الإرسال. تأكد من الإنترنت."); }
+  $("busSend").disabled = false;
+});
+$("send").addEventListener("click", async () => {
+  const text = $("text").value.trim(); if (!text) return; $("send").disabled = true;
+  try { await api("/lead/msg", { text }); $("text").value = ""; done("sendOk", "✓ أُرسلت لكل المسافرين"); load(); } catch { done("sendOk", "تعذر الإرسال. تأكد من الإنترنت."); }
+  $("send").disabled = false;
+});
+document.addEventListener("click", async e => { const b = e.target.closest("[data-kick]"); if (!b) return;
+  if (!confirm("إيقاف الخريطة على هذا الجوال؟ يقدر يدخل مرة ثانية بالرقم السري إذا فيه مكان.")) return;
+  try { await api("/lead/kick", { k: b.dataset.kick }); load(); } catch { alert("تعذر الإيقاف."); } });
+$("out") && $("out").addEventListener("click", () => { try { localStorage.removeItem(KEY); } catch {} location.reload(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && $("app").style.display) load(); });
+</script>
+</body>
+</html>

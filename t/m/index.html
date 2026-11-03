@@ -6,10 +6,16 @@
 <title>خريطتك السياحية</title>
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0f4c5c">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" id="mf" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script>
+// The home-screen icon must open this exact page with what follows # (the map id), so the manifest is made here.
+try { document.getElementById("mf").href = "data:application/manifest+json," + encodeURIComponent(JSON.stringify({ name: "خريطتي - MSN Travel", short_name: "خريطتي",
+  start_url: location.href, scope: new URL("./", location.href).href, display: "standalone", dir: "rtl", lang: "ar", background_color: "#0f4c5c", theme_color: "#0f4c5c" })); } catch {}
+</script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw0xks7d">
+<link rel="stylesheet" href="../../style.css?v=mw0z082a">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -62,6 +68,14 @@ body { overflow: auto; }
 .alarm { position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center; padding: 24px; background: rgba(160, 20, 8, .94); color: #fff; text-align: center; }
 .alarm .box { width: min(420px, 100%); } .alarm .big { font-size: 64px; } .alarm h2 { margin: 8px 0; font-size: 26px; } .alarm p { font-size: 18px; line-height: 1.8; margin: 0 0 20px; }
 .alarm .btn { width: 100%; height: 52px; font-size: 18px; background: #fff; color: #7a1408; }
+.alarm.msg { background: rgba(15, 76, 92, .96); } .alarm.msg .btn { color: var(--brand); }
+.lock input.who { font-size: 15px; letter-spacing: 0; height: 44px; margin-top: 8px; direction: rtl; }
+.gate { position: fixed; inset: 0; z-index: 4000; display: grid; place-items: center; padding: 24px; background: rgba(8, 48, 58, .96); }
+.gate .box { background: var(--panel); border-radius: 20px; padding: 26px 22px; width: min(400px, 100%); text-align: center; box-shadow: var(--shadow); }
+.gate h2 { margin: 6px 0; color: var(--brand); font-size: 21px; } .gate p { color: var(--muted); font-size: 14.5px; line-height: 1.9; margin: 0 0 14px; }
+.gate .btn { width: 100%; height: 50px; font-size: 16px; } .gate .big { font-size: 48px; } .gate .msg { color: var(--warn); font-size: 14px; min-height: 20px; margin-top: 8px; }
+.msglist { margin: 0 0 6px; padding: 0; list-style: none; } .msglist li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; line-height: 1.7; }
+.msglist small { color: var(--muted); display: block; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -70,13 +84,14 @@ body { overflow: auto; }
     <img class="logo" id="lockLogo" alt="" hidden><h1 id="lockTitle">خريطتك السياحية</h1>
     <p id="lockText">أدخل الرقم السري الذي أرسلته لك الوكالة لفتح خريطتك.</p>
     <form id="form"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="الرقم السري" required>
+    <input id="who" class="who" maxlength="40" autocomplete="name" placeholder="اسمك (اختياري، يشوفه قائد الرحلة)" aria-label="اسمك">
     <button class="btn" type="submit">افتح الخريطة</button></form>
     <div class="msg" id="msg" role="alert"></div>
   </div>
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw0xks7d"></script>
+<script src="../../geo.js?v=mw0z082a"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -99,7 +114,8 @@ try { const b = JSON.parse(localStorage.getItem(BRAND)); if (b) { $("lockTitle")
 const store = { get: () => { try { return localStorage.getItem(KEY); } catch { return null; } },
   set: v => { try { localStorage.setItem(KEY, v); } catch {} }, del: () => { try { localStorage.removeItem(KEY); } catch {} } };
 const MSG = { code: "الرقم السري غير صحيح، حاول مرة أخرى.", expired: "انتهت صلاحية الرقم السري. اطلب رقماً جديداً من الوكالة وأدخله هنا.",
-  gone: "أوقفت الوكالة هذه الخريطة.", stopped: "أوقفت الوكالة هذا الرقم السري. اطلب رقماً جديداً وأدخله هنا.", offline: "اتصل بالإنترنت مرة واحدة لفتح الخريطة أول مرة.", data: "تعذر تحميل بيانات الخريطة. اتصل بالإنترنت ثم حاول." };
+  gone: "أوقفت الوكالة هذه الخريطة.", stopped: "أوقفت الوكالة هذا الرقم السري. اطلب رقماً جديداً وأدخله هنا.", offline: "اتصل بالإنترنت مرة واحدة لفتح الخريطة أول مرة.", srvdown: "تعذر الاتصال بسيرفر الوكالة. اتصل بالإنترنت وحاول مرة ثانية.",
+  full: "اكتمل عدد الأجهزة المسموح لهذا الرقم السري. اطلب من الوكالة رقماً آخر.", kicked: "أوقفت الوكالة أو قائد الرحلة الخريطة على هذا الجهاز. تواصل معهم.", data: "تعذر تحميل بيانات الخريطة. اتصل بالإنترنت ثم حاول." };
 const fmtLeft = ms => { const m = Math.max(0, Math.floor(ms / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
   return [d && d + " يوم", h && h + " ساعة", (m % 60 || !(d || h)) && (m % 60) + " دقيقة"].filter(Boolean).join(" و").replace(/^0 دقيقة$/, "أقل من دقيقة"); };
 
@@ -144,9 +160,14 @@ async function unlock(code, silent) {
     if (now() >= slot.e) throw "expired";
     // A code made ahead for a later trip opens from its start (the arrival day).
     if (slot.s && now() < slot.s) { store.del(); $("msg").textContent = "هذا الرقم يبدأ " + new Date(slot.s).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }) + ". افتح الخريطة في وقتها."; return; }
-    const raw = await openBody(F, slot), daysSeen = JSON.stringify(raw.days || []), T = await expand(raw);
+    const raw = await openBody(F, slot);
+    // iPhone: alerts need the map opened from the home screen, so it joins (and takes a place on the code) only there.
+    if (raw.srv && isIOS && !standalone) { store.set(code); $("msg").textContent = ""; S = null; return gate(); }
+    if (raw.srv) await join(raw.srv, code, ($("who") && $("who").value.trim()) || "");
+    const daysSeen = JSON.stringify(raw.days || []), T = await expand(raw);
     store.set(code); T.until = slot.e;
     render(T); watchExpiry(code, slot.e, F.v, daysSeen);
+    if (S) { inbox(); setInterval(inbox, 30000); gate(); }
   } catch (e) {
     store.del();
     $("msg").textContent = MSG[e] || MSG.code;
@@ -206,6 +227,7 @@ function render(T) {
     <div class="busbar" id="busbar"></div>
     <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === first}">اليوم ${i + 1}${d.date ? " · " + esc(dayShort(d.date)) : ""}</button>`).join("")}</nav>
     <div id="tmap"></div><div id="day"></div>
+    <section class="apps" id="msgCard" hidden><h2>📣 رسائل الرحلة</h2><ul class="msglist" id="msgList"></ul></section>
     <section class="apps" id="busCard" hidden><h2>🚌 مواعيد الباص</h2><ul class="buslist" id="busList"></ul>
       <p>الخريطة ترن قبل موعد الباص بـ 15 و 5 دقائق وهي مفتوحة. ولو قفلت الشاشة أو ما عندك إنترنت، أضف المواعيد لتقويم جوالك فيرن لك التقويم في وقتها.</p>
       <div class="row"><button class="btn" id="busCal">📅 أضف المواعيد لتقويم جوالي</button><button class="btn ghost" id="busOn">🔔 فعّل صوت التنبيه</button></div>
@@ -388,13 +410,98 @@ function busCalendar(T, B) {
   $("busNote").textContent = "افتح الملف اللي نزل واختر «إضافة للتقويم». إذا غيّرت الوكالة المواعيد، اضغط الزر مرة ثانية.";
 }
 // Saves this page, the photos and the map tiles already viewed. Map tiles are kept as you browse the map online.
+// ---- Agency server (when the map has one): each phone joins its code (up to the code's number of phones), gets
+// messages and bus alerts from the agency or the trip leader, and must allow notifications (renewed every 15 days) so
+// alerts reach it even with the screen locked. A phone that joined once keeps working offline.
+const DEV = "map-dev-" + ID, SEEN = "map-msg-" + ID, CONSENT_DAYS = 15;
+let S = null;
+const ls = { get: k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+const b64u = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const u8u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+const post = (path, body) => fetch(S.url + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+async function join(url, code, name) {
+  const hh = b64u(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ID + "|" + code))), saved = ls.get(DEV), keep = saved && saved.h === hh ? saved : null;
+  let r, j;
+  try { r = await fetch(url + "/join", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: ID, h: hh, dev: keep && keep.dev, name }) }); j = await r.json(); }
+  catch { if (keep) { S = { ...keep, url }; return; } throw "srvdown"; } // offline: a phone that joined before keeps working
+  if (r.ok) { S = { url, h: hh, dev: j.dev, consent: keep && keep.dev === j.dev ? keep.consent || 0 : 0 }; ls.set(DEV, S); return; }
+  if (j.error === "nocode") return; // the code is not on the server: the map opens without its features
+  if (keep && j.error !== "expired") { S = { ...keep, url }; return; }
+  throw ({ full: "full", expired: "expired" })[j.error] || "srvdown";
+}
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+// The notification gate: the map is usable once notifications are allowed, for 15 days, then asks again.
+function gate() {
+  document.querySelector(".gate")?.remove();
+  const consent = S ? S.consent : 0, granted = window.Notification && Notification.permission === "granted", fresh = consent && now() - consent < CONSENT_DAYS * 864e5;
+  if (S && granted && fresh) return keepSub();
+  if (consent && !navigator.onLine) return; // cannot renew offline: ask again when back online
+  const el = document.createElement("div"); el.className = "gate"; el.setAttribute("role", "dialog");
+  const renew = consent ? `<p>انتهت فترة السماح (${CONSENT_DAYS} يوم). جدّد السماح بالتنبيهات لتستمر الخدمة.</p>` : "";
+  let inner;
+  if (isIOS && !standalone) inner = `<div class="big">📲</div><h2>أضف الخريطة للشاشة الرئيسية</h2>${renew}<p>عشان توصلك تنبيهات الباص ورسائل قائد الرحلة حتى والجوال مقفل:<br>١. اضغط زر المشاركة <b>⬆️</b> تحت في Safari.<br>٢. اختر <b>«إضافة إلى الشاشة الرئيسية»</b>.<br>٣. افتح الخريطة من أيقونتها في الشاشة الرئيسية واسمح بالتنبيهات.</p>`;
+  else if (!("serviceWorker" in navigator) || !("PushManager" in window) || !window.Notification) inner = `<div class="big">🔔</div><h2>المتصفح ما يدعم التنبيهات</h2><p>افتح رابط الخريطة في Chrome (أندرويد) أو Safari (آيفون) عشان تستخدم الخدمة.</p>`;
+  else inner = `<div class="big">🔔</div><h2>فعّل التنبيهات</h2>${renew}<p>الخدمة تحتاج السماح بالتنبيهات عشان توصلك مواعيد الباص ورسائل قائد الرحلة حتى والجوال مقفل. السماح صالح ${CONSENT_DAYS} يوم.</p>
+    <button class="btn" id="allow">🔔 السماح بالتنبيهات</button>${Notification.permission === "denied" ? '<p style="margin-top:10px">التنبيهات مقفولة لهذه الصفحة: افتح إعدادات المتصفح ← إعدادات الموقع ← الإشعارات ← سماح، ثم اضغط الزر.</p>' : ""}<div class="msg" id="gateMsg"></div>`;
+  el.innerHTML = `<div class="box">${inner}</div>`; document.body.append(el);
+  const b = el.querySelector("#allow"); if (b) b.onclick = async () => {
+    b.disabled = true; $("gateMsg").textContent = "";
+    try { await subscribe(true); el.remove(); beep(); }
+    catch (e) { b.disabled = false; $("gateMsg").textContent = e === "denied" ? "ما تم السماح. اضغط «سماح» لما يسألك المتصفح." : "تعذر التفعيل. تأكد من الإنترنت وحاول مرة ثانية."; }
+  };
+}
+async function subscribe(ask) {
+  const reg = await navigator.serviceWorker.register("../../sw.js", { scope: "../../" }); await navigator.serviceWorker.ready;
+  if (Notification.permission !== "granted" && (!ask || await Notification.requestPermission() !== "granted")) throw "denied";
+  const key = (await (await fetch(S.url + "/vapid")).json()).key;
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && b64u(sub.options.applicationServerKey || new ArrayBuffer(0)) !== key) { await sub.unsubscribe(); sub = null; }
+  sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8u(key) });
+  const r = await post("/sub", { dev: S.dev, sub: sub.toJSON() }); if (!r.ok) throw "srv";
+  if (ask) { S.consent = (await r.json()).consent; ls.set(DEV, S); }
+  await pushCfg();
+}
+// Allowed already: keep the server's copy of this phone's subscription fresh (it can change), without asking.
+const keepSub = () => { if (navigator.onLine) subscribe(false).catch(() => {}); };
+// What the service worker needs to fetch the text of a push: the server and this phone's device id, per map.
+async function pushCfg(since) {
+  if (!window.caches) return; const c = await caches.open("push-cfg"), k = location.origin + "/__push-cfg", r = await c.match(k), cfg = r ? await r.json() : { devs: [] };
+  const d = cfg.devs.find(x => x.id === ID) || (cfg.devs.push({ id: ID }), cfg.devs[cfg.devs.length - 1]);
+  Object.assign(d, { url: S.url, dev: S.dev, page: location.href, title: cur.T && cur.T.title }); if (since) d.since = Math.max(d.since || 0, since);
+  await c.put(k, new Response(JSON.stringify(cfg), { headers: { "content-type": "application/json" } }));
+}
+// Messages: every 30 seconds while online. New ones ring on the page (the locked phone gets them as notifications).
+const WHO = { lead: "قائد الرحلة", agency: "الوكالة", auto: "تذكير" };
+async function inbox() {
+  if (!S || !navigator.onLine || document.hidden) return;
+  let j; try { j = await (await fetch(`${S.url}/inbox?dev=${encodeURIComponent(S.dev)}&since=0`)).json(); } catch { return; }
+  if (j.kicked) { store.del(); localStorage.removeItem(DEV); try { sessionStorage.setItem("map-expired", ID + "|kicked"); } catch {} return location.reload(); }
+  const msgs = j.msgs || [], seen = ls.get(SEEN), last = msgs.length ? msgs[msgs.length - 1].id : 0;
+  // Bus times from the server join those in the map file (the bar, the list and the alarms use both).
+  let added = false;
+  for (const m of msgs) if (m.kind === "bus" && m.t && !(cur.T.bus || []).some(b => b.t === m.t)) { (cur.T.bus ||= []).push({ t: m.t, place: m.place || "" }); added = true; }
+  if (added) busTick();
+  $("msgCard").hidden = !msgs.length;
+  $("msgList").innerHTML = msgs.slice().reverse().map(m => `<li>${esc(m.text)}<small>${esc(WHO[m.who] || "")} · ${esc(new Date(m.at).toLocaleString("ar", { weekday: "long", hour: "numeric", minute: "2-digit" }))}</small></li>`).join("");
+  if (seen !== null) { const fresh = msgs.filter(m => m.id > seen && now() - m.at < 30 * 6e4 && m.kind === "msg"); if (fresh.length) msgAlarm(fresh[fresh.length - 1]); }
+  if (last && last !== seen) { ls.set(SEEN, last); pushCfg(last).catch(() => {}); }
+}
+function msgAlarm(m) {
+  document.querySelector(".alarm")?.remove();
+  const el = document.createElement("div"); el.className = "alarm msg"; el.setAttribute("role", "alertdialog");
+  el.innerHTML = `<div class="box"><div class="big">📣</div><h2>رسالة من ${esc(WHO[m.who] || "الوكالة")}</h2><p>${esc(m.text)}</p><button class="btn">تمام</button></div>`;
+  document.body.append(el); beep(); navigator.vibrate?.([300, 150, 300]);
+  el.querySelector("button").onclick = () => el.remove();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && S) { inbox(); if (document.querySelector(".gate") || !S.consent) gate(); } });
 async function saveOffline(T) {
   const btn = $("save"); btn.disabled = true; btn.textContent = "جارٍ الحفظ…";
   try {
     if (!("serviceWorker" in navigator) || !window.caches) throw 0;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw0xks7d", "../../vendor/leaflet.css", "../../style.css?v=mw0xks7d", "manifest.webmanifest"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw0z082a", "../../vendor/leaflet.css", "../../style.css?v=mw0z082a", "manifest.webmanifest"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));
