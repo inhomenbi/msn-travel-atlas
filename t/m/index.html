@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw11pswy">
+<link rel="stylesheet" href="../../style.css?v=mw17ktwl">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -49,7 +49,8 @@ body { overflow: auto; }
 .place .go { display: flex; gap: 8px; } .place .btn { height: 36px; padding: 0 12px; font-size: 13.5px; }
 .place.near { border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,.25); }
 .cats { display: flex; gap: 6px; overflow-x: auto; padding: 8px 16px 2px; }
-.cats .chip { white-space: nowrap; } .more { display: block; margin: 8px auto 16px; }
+.cats .chip { white-space: nowrap; } .cats .chip small { opacity: .7; } .more { display: block; margin: 8px auto 16px; }
+.afilter { display: flex; gap: 8px; padding: 8px 16px 0; } .afilter select, .afilter input { flex: 1; min-width: 0; height: 40px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; font: inherit; font-size: 14px; background: var(--panel); color: var(--ink); }
 .pop { text-align: right; min-width: 180px; } .pop img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; display: block; margin-bottom: 6px; }
 .pop .btn { height: 34px; margin-top: 8px; width: 100%; color: #fff; }
 .apps { background: var(--panel); margin: 12px 16px; border-radius: var(--radius); border: 1px solid var(--line); padding: 14px 16px; }
@@ -86,7 +87,7 @@ body { overflow: auto; }
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw11pswy"></script>
+<script src="../../geo.js?v=mw17ktwl"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -223,7 +224,7 @@ async function expand(B) {
 if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.open(k).then(c => c.keys().then(rs => rs.forEach(r => { if (/\/data\/sites\.json/.test(r.url)) c.delete(r); }))))).catch(() => {});
 
 function km(a, b) { const r = Math.PI / 180, x = Math.sin((b.lat - a.lat) * r / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin((b.lng - a.lng) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); }
-let map, layer, fixed, cur = { T: null, i: 0 }, geoAt = null, geoTimes = null;
+let map, layer, fixed, pts, cur = { T: null, i: 0 }, geoAt = null, geoTimes = null;
 function render(T) {
   const B = brandOf(T); try { localStorage.setItem(BRAND, JSON.stringify(B)); } catch {}
   document.title = T.title + " | " + B.name;
@@ -234,9 +235,10 @@ function render(T) {
   el.innerHTML = `<header><small>${B.logo ? `<img class="logo" src="${esc(B.logo)}" alt="">` : ""}${esc(B.name)}</small><h1>${esc(T.title)}</h1>
       <div>${T.traveler ? esc(T.traveler) + " · " : ""}<span id="valid"></span></div></header>
     <div class="busbar" id="busbar"></div>
-    <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === first}">اليوم ${i + 1}${d.date ? " · " + esc(dayShort(d.date)) : ""}</button>`).join("")}</nav>
+    <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === first}">اليوم ${i + 1}${d.date ? " · " + esc(dayShort(d.date)) : ""}</button>`).join("")}<button class="chip" data-i="-2" aria-pressed="false">🛎️ خدمات قريبة</button></nav>
     <div id="tmap"></div><div id="day"></div>
-    <section class="apps" id="msgCard" hidden><h2>📣 رسائل الرحلة</h2><ul class="msglist" id="msgList"></ul></section>
+    <section class="apps" id="msgCard" hidden><h2>📣 رسائل الرحلة</h2><ul class="msglist" id="msgList"></ul>
+      <div class="row"><button class="btn ghost" id="muteBtn">🔕 ما بلتحق اليوم: كتم التنبيهات لليوم</button></div><p class="offline-note" id="muteNote" style="padding:8px 0 0"></p></section>
     <section class="apps" id="busCard" hidden><h2>🚌 مواعيد الباص</h2><ul class="buslist" id="busList"></ul>
       <p>الخريطة ترن قبل موعد الباص بـ 15 و 5 دقائق وهي مفتوحة. ولو قفلت الشاشة أو ما عندك إنترنت، أضف المواعيد لتقويم جوالك فيرن لك التقويم في وقتها.</p>
       <div class="row"><button class="btn" id="busCal">📅 أضف المواعيد لتقويم جوالي</button><button class="btn ghost" id="busOn">🔔 فعّل صوت التنبيه</button></div>
@@ -253,13 +255,13 @@ function render(T) {
   map = L.map("tmap", { zoomControl: false });
   L.control.zoom({ position: "topleft" }).addTo(map);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
-  layer = L.layerGroup().addTo(map); fixed = L.layerGroup().addTo(map);
+  layer = L.layerGroup().addTo(map); fixed = L.layerGroup().addTo(map); pts = L.layerGroup().addTo(map);
   $("hotelBtn").addEventListener("click", goHotel);
   $("busCal").addEventListener("click", () => busCalendar(T, B));
   $("busOn").addEventListener("click", busAllow);
   $("days").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (!b) return;
     for (const x of $("days").children) x.setAttribute("aria-pressed", x === b);
-    const i = +b.dataset.i; i < 0 ? showArea(T) : showDay(T, i); });
+    const i = +b.dataset.i; i === -2 ? showServices() : i < 0 ? showArea(T) : showDay(T, i); });
   $("save").addEventListener("click", () => saveOffline(T));
   // All trip stops as bookmarks for maps.me / Organic Maps, one colour per day.
   const COLORS = ["red", "blue", "green", "purple", "orange", "pink", "brown", "yellow"];
@@ -282,29 +284,46 @@ const CAT_COLOR = { "تاريخي": "#a52714", "طبيعي": "#097138", "دين�
   "معماري": "#455a64", "ترفيهي": "#e91e63", "قرية/بلدة": "#795548", "تسوق": "#d4a017" };
 const APP_COLOR = { "تاريخي": "red", "طبيعي": "green", "ديني": "blue", "ثقافي": "purple", "متحف": "orange", "معماري": "brown",
   "ترفيهي": "pink", "قرية/بلدة": "brown", "تسوق": "yellow" };
-const area = { cat: "", shown: 30, list: [], at: null };
+// Filters: country tabs, a city list, a search box and the categories, so a trip of several countries stays easy to browse.
+const area = { cat: "", country: "", city: "", q: "", shown: 30, list: [] };
+const norm = t => String(t || "").replace(/[\u064B-\u065F\u0670]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").toLowerCase();
+const tally = (list, k) => { const o = {}; for (const s of list) o[s[k]] = (o[s[k]] || 0) + 1; return Object.entries(o).sort((a, b) => b[1] - a[1]); };
 function showArea(T, keep) {
   layer.clearLayers(); cur.i = -1; geoTimes = null; geoAt = null;
   if (!keep) area.shown = 30;
-  const me = Geo.last;
-  area.list = T.area.filter(s => !area.cat || s.cat === area.cat);
+  const me = Geo.last, countries = tally(T.area, "country");
+  if (area.country && !countries.some(([c]) => c === area.country)) area.country = "";
+  const inC = T.area.filter(s => !area.country || s.country === area.country), cities = tally(inC, "city");
+  if (area.city && !cities.some(([c]) => c === area.city)) area.city = "";
+  const inCity = inC.filter(s => !area.city || s.city === area.city), q = norm(area.q);
+  const found = inCity.filter(s => !q || norm(s.name + " " + s.city + " " + (s.en || "")).includes(q)), cats = tally(found, "cat");
+  if (area.cat && !cats.some(([c]) => c === area.cat)) area.cat = "";
+  area.list = found.filter(s => !area.cat || s.cat === area.cat);
   if (me) area.list.sort((a, b) => Geo.km(me, a) - Geo.km(me, b));
   for (const s of area.list) s.m = L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [16, 16],
     html: `<div class="pin${s.gem ? " gem" : ""}" style="background:${CAT_COLOR[s.cat] || "#555"}"></div>` }) })
     .bindPopup(() => `<div class="pop">${s.img ? `<img src="${esc(s.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<b>${esc(s.name)}</b>
       <div>${esc(s.city)} · ${esc(s.cat)}</div>${Geo.last ? Geo.line(Geo.last, s) : ""}<button class="btn" onclick="goTo('a', ${area.list.indexOf(s)})">🧭 انطلق</button></div>`).addTo(layer);
   if (!keep && area.list.length) map.fitBounds(L.latLngBounds(area.list.map(s => [s.lat, s.lng])).pad(0.1), { maxZoom: 13 });
-  const cats = [...new Set(T.area.map(s => s.cat))];
+  const chip = (attr, v, on, label) => `<button class="chip" ${attr}="${esc(v)}" aria-pressed="${on}">${label}</button>`;
   $("day").innerHTML = `<div class="day-head"><h2>خريطة المنطقة: ${esc((T.cities ? [...new Set(T.cities.map(c => c.split("|")[1]))] : T.countries).join(" و"))}</h2>
-      <p>${T.area.length} مكان سياحي. اضغط على أي مكان في الخريطة أو القائمة ثم «انطلق»${me ? "، والقائمة مرتبة من الأقرب إليك." : "، واضغط «📍 موقعي» لترتيبها من الأقرب إليك."}</p></div>
-    <div class="cats" id="cats"><button class="chip" data-cat="" aria-pressed="${!area.cat}">الكل</button>${cats.map(c => `<button class="chip" data-cat="${esc(c)}" aria-pressed="${area.cat === c}"><span class="pin" style="width:10px;height:10px;border-width:1px;background:${CAT_COLOR[c] || "#555"}"></span>${esc(c)}</button>`).join("")}</div>`
+      <p>${T.area.length} مكان سياحي. اختر الدولة والمدينة، أو ابحث بالاسم، ثم «انطلق»${me ? "، والقائمة مرتبة من الأقرب إليك." : "، واضغط «📍 موقعي» لترتيبها من الأقرب إليك."}</p></div>`
+    + (countries.length > 1 ? `<div class="cats" id="ctry">${chip("data-ctry", "", !area.country, "كل الدول")}${countries.map(([c, n]) => chip("data-ctry", c, area.country === c, `${esc(c)} <small>(${n})</small>`)).join("")}</div>` : "")
+    + `<div class="afilter">${cities.length > 1 ? `<select id="acity" aria-label="المدينة"><option value="">كل المدن (${inC.length})</option>${cities.map(([c, n]) => `<option value="${esc(c)}" ${area.city === c ? "selected" : ""}>${esc(c)} (${n})</option>`).join("")}</select>` : ""}
+      <input id="aq" type="search" placeholder="🔎 ابحث عن مكان" value="${esc(area.q)}" aria-label="ابحث عن مكان"></div>`
+    + `<div class="cats" id="cats">${chip("data-cat", "", !area.cat, "الكل")}${cats.map(([c, n]) => chip("data-cat", c, area.cat === c, `<span class="pin" style="width:10px;height:10px;border-width:1px;background:${CAT_COLOR[c] || "#555"}"></span>${esc(c)} <small>(${n})</small>`)).join("")}</div>`
+    + (area.list.length ? "" : '<p class="offline-note" style="padding:12px 16px">ما فيه أماكن بهذا البحث.</p>')
     + area.list.slice(0, area.shown).map((s, n) => `<article class="place">
       ${s.img ? `<img class="thumb" src="${esc(s.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<div class="thumb ph" style="background:${CAT_COLOR[s.cat] || "#555"}">${s.gem ? "★" : "◉"}</div>`}
-      <div><h3>${s.gem ? "★ " : ""}${esc(s.name)}</h3><div class="meta">${esc(s.city)} · ${esc(s.cat)}${s.unesco ? " · اليونسكو" : ""}</div>
+      <div><h3>${s.gem ? "★ " : ""}${esc(s.name)}</h3><div class="meta">${esc(s.city)}${countries.length > 1 ? " - " + esc(s.country) : ""} · ${esc(s.cat)}${s.unesco ? " · اليونسكو" : ""}</div>
       <div class="eta-slot" data-n="${n}"></div><p>${esc(s.desc)}</p>${s.wdesc ? '<div class="meta">الوصف: ويكيبيديا (CC BY-SA)</div>' : ""}
       <div class="go"><button class="btn" onclick="goTo('a', ${n})">🧭 انطلق</button><button class="btn ghost" data-show="${n}">على الخريطة</button></div></div></article>`).join("")
     + (area.list.length > area.shown ? `<button class="btn ghost more" id="moreArea">عرض المزيد (${area.list.length - area.shown})</button>` : "");
   $("cats").onclick = e => { const b = e.target.closest("[data-cat]"); if (b) { area.cat = b.dataset.cat; showArea(T); } };
+  if ($("ctry")) $("ctry").onclick = e => { const b = e.target.closest("[data-ctry]"); if (b) { area.country = b.dataset.ctry; area.city = ""; showArea(T); } };
+  if ($("acity")) $("acity").onchange = e => { area.city = e.target.value; showArea(T); };
+  // Search as you type; the box keeps its focus across the redraw.
+  $("aq").oninput = e => { area.q = e.target.value; const p = e.target.selectionStart; showArea(T, true); const i = $("aq"); i.focus(); try { i.setSelectionRange(p, p); } catch {} };
   $("day").onclick = e => {
     if (e.target.id === "moreArea") { area.shown += 30; showArea(T, true); return; }
     const b = e.target.closest("[data-show]"); if (!b) return;
@@ -338,6 +357,7 @@ const dayLong = s => new Date(s + "T12:00").toLocaleDateString("ar", { weekday: 
 function goTo(k, n) { Geo.guide(k === "a" ? area.list[n] : cur.T.days[cur.i].sites[n]); }
 function startLocate() { Geo.locate(map, updateEta); }
 async function updateEta(me) {
+  if (cur.i === -2) { if (!serv.at || Geo.km(serv.at, me) > 1) { serv.at = me; showServices(); } return; } // services: search around me
   if (cur.i < 0 && (!area.at || Geo.km(area.at, me) > 1)) { area.at = me; showArea(cur.T, true); return; } // re-sort nearest first
   const stops = cur.i < 0 ? area.list.slice(0, area.shown) : cur.T.days[cur.i].sites;
   const moved = !geoAt || Geo.km(geoAt, me) > 0.3;
@@ -385,15 +405,16 @@ function busTick() {
   }
 }
 function busAlarm(b) {
+  if (muted()) return;
   const title = b.t - now() >= 6e4 ? `الباص يتحرك بعد ${fmtLeft(b.t - now())}` : "الباص يتحرك الحين", body = (b.place ? "من " + b.place + ". " : "") + "توجّه للباص.";
   document.querySelector(".alarm")?.remove();
   const el = document.createElement("div"); el.className = "alarm"; el.setAttribute("role", "alertdialog");
   el.innerHTML = `<div class="box"><div class="big">🚌</div><h2>${esc(title)}</h2><p>${esc(busFmt(b.t))}<br>${esc(body)}</p><button class="btn">تمام، رايح للباص</button></div>`;
   document.body.append(el);
   let n = 0; const ring = () => { beep(); navigator.vibrate?.([400, 200, 400, 200, 400]); if (++n < 6 && el.isConnected) setTimeout(ring, 4000); }; ring();
-  el.querySelector("button").onclick = () => { el.remove(); navigator.vibrate?.(0); };
+  el.querySelector("button").onclick = () => { el.remove(); navigator.vibrate?.(0); ack(); };
   if (window.Notification && Notification.permission === "granted") navigator.serviceWorker?.ready.then(r =>
-    r.showNotification("🚌 " + title, { body, tag: "bus-" + b.t, renotify: true, requireInteraction: true, vibrate: [400, 200, 400] })).catch(() => {});
+    r.showNotification("🚌 " + title, { body, tag: "bus-" + b.t, renotify: true, requireInteraction: true, vibrate: [500, 250, 500, 250, 500, 250, 500] })).catch(() => {});
 }
 function beep() {
   try { audio ||= new (window.AudioContext || window.webkitAudioContext)(); audio.resume();
@@ -487,22 +508,99 @@ async function inbox() {
   let j; try { j = await (await fetch(`${S.url}/inbox?dev=${encodeURIComponent(S.dev)}&since=0`)).json(); } catch { return; }
   if (j.kicked) { store.del(); localStorage.removeItem(DEV); try { sessionStorage.setItem("map-expired", ID + "|kicked"); } catch {} return location.reload(); }
   const msgs = j.msgs || [], seen = ls.get(SEEN), last = msgs.length ? msgs[msgs.length - 1].id : 0;
+  S.mute = j.mute || 0; S.ackd = j.ack || 0; showMute(); drawPoints(msgs);
   // Bus times from the server join those in the map file (the bar, the list and the alarms use both).
   let added = false;
   for (const m of msgs) if (m.kind === "bus" && m.t && !(cur.T.bus || []).some(b => b.t === m.t)) { (cur.T.bus ||= []).push({ t: m.t, place: m.place || "" }); added = true; }
   if (added) busTick();
   $("msgCard").hidden = !msgs.length;
-  $("msgList").innerHTML = msgs.slice().reverse().map(m => `<li>${esc(m.text)}<small>${esc(WHO[m.who] || "")} · ${esc(new Date(m.at).toLocaleString("ar", { weekday: "long", hour: "numeric", minute: "2-digit" }))}</small></li>`).join("");
-  if (seen !== null) { const fresh = msgs.filter(m => m.id > seen && now() - m.at < 30 * 6e4 && m.kind === "msg"); if (fresh.length) msgAlarm(fresh[fresh.length - 1]); }
+  $("msgList").innerHTML = msgs.slice().reverse().map(m => `<li>${esc(m.text)}${m.kind === "point" ? ` <button class="btn ghost" style="height:32px;padding:0 10px;font-size:13px" onclick="goPoint(${m.id})">🧭 انطلق</button>` : ""}<small>${esc(WHO[m.who] || "")} · ${esc(new Date(m.at).toLocaleString("ar", { weekday: "long", hour: "numeric", minute: "2-digit" }))}</small></li>`).join("");
+  if (seen !== null) { const fresh = msgs.filter(m => m.id > seen && now() - m.at < 30 * 6e4 && (m.kind === "msg" || m.kind === "point")); if (fresh.length && !muted()) msgAlarm(fresh[fresh.length - 1]); }
   if (last && last !== seen) { ls.set(SEEN, last); pushCfg(last).catch(() => {}); }
 }
 function msgAlarm(m) {
   document.querySelector(".alarm")?.remove();
   const el = document.createElement("div"); el.className = "alarm msg"; el.setAttribute("role", "alertdialog");
-  el.innerHTML = `<div class="box"><div class="big">📣</div><h2>رسالة من ${esc(WHO[m.who] || "الوكالة")}</h2><p>${esc(m.text)}</p><button class="btn">تمام</button></div>`;
-  document.body.append(el); beep(); navigator.vibrate?.([300, 150, 300]);
-  el.querySelector("button").onclick = () => el.remove();
+  const point = m.kind === "point";
+  el.innerHTML = `<div class="box"><div class="big">${point ? "📍" : "📣"}</div><h2>${point ? "نقطة التقاء من" : "رسالة من"} ${esc(WHO[m.who] || "الوكالة")}</h2><p>${esc(m.text)}</p>
+    ${point ? '<button class="btn" data-go>🧭 انطلق للمكان</button><div style="height:8px"></div>' : ""}<button class="btn" data-ok>تمام</button></div>`;
+  document.body.append(el);
+  let n = 0; const ring = () => { beep(); navigator.vibrate?.([400, 200, 400]); if (++n < 3 && el.isConnected) setTimeout(ring, 4000); }; ring();
+  el.querySelector("[data-ok]").onclick = () => { el.remove(); ack(m.id); };
+  if (point) el.querySelector("[data-go]").onclick = () => { el.remove(); ack(m.id); goPoint(m.id); };
 }
+// "تمام" tells the server this phone saw the alert, so it stops ringing it again.
+function ack(id) { if (!S) return; const m = id || ls.get(SEEN) || 0; if (m > (S.ackd || 0)) post("/ack", { dev: S.dev, id: m }).then(() => { S.ackd = m; }).catch(() => {}); }
+// Mute: the traveler is not joining today's tour (or the leader muted this phone): no alarms or notifications until then.
+const muted = () => !!(S && S.mute > now());
+const midnight = () => { const d = new Date(now()); d.setHours(24, 0, 0, 0); return d.getTime(); };
+function showMute() {
+  const b = $("muteBtn"); if (!b) return;
+  b.textContent = muted() ? "🔔 رجّع التنبيهات" : "🔕 ما بلتحق اليوم: كتم التنبيهات لليوم";
+  $("muteNote").textContent = muted() ? "التنبيهات مكتومة على هذا الجوال حتى " + new Date(S.mute).toLocaleString("ar", { weekday: "long", hour: "numeric", minute: "2-digit" }) + "." : "";
+}
+document.addEventListener("click", async e => { if (e.target.id !== "muteBtn" || !S) return; const until = muted() ? 0 : midnight();
+  try { const r = await post("/mute", { dev: S.dev, until }); if (!r.ok) throw 0; S.mute = until; showMute(); } catch { $("muteNote").textContent = "تعذر التغيير. تأكد من الإنترنت."; } });
+// Meeting points from the trip leader: a pin on the map with "go".
+let points = [];
+function drawPoints(msgs) {
+  points = msgs.filter(m => m.kind === "point" && m.lat != null); if (!pts) return; pts.clearLayers();
+  for (const p of points) L.marker([p.lat, p.lng], { zIndexOffset: 900, icon: L.divIcon({ className: "", iconSize: [32, 32], html: '<div class="hpin">📍</div>' }) })
+    .bindPopup(`<div class="pop"><b>${esc(p.place || "نقطة التقاء")}</b><div>${esc(p.text)}</div>${Geo.last ? Geo.line(Geo.last, p) : ""}<button class="btn" onclick="goPoint(${p.id})">🧭 انطلق</button></div>`).addTo(pts);
+}
+function goPoint(id) { const p = points.find(x => x.id === id); if (p) Geo.guide({ name: p.place || "نقطة التقاء", city: "نقطة التقاء", lat: p.lat, lng: p.lng }); }
+// Nearby services (OpenStreetMap, needs internet): around my location, or the map's center. The last results of each
+// kind are kept on the phone, so they still show offline.
+// Each kind also has a Google Maps search around the same spot (always works when online, opens the maps app).
+const GTERM = { mall: "مجمع تجاري", mosque: "مسجد", exchange: "صرافة", atm: "صراف آلي", car: "تأجير سيارات", cinema: "سينما", pharmacy: "صيدلية", hospital: "مستشفى" };
+const gmaps = (key, at) => `https://www.google.com/maps/search/${encodeURIComponent(GTERM[key])}/@${at.lat.toFixed(5)},${at.lng.toFixed(5)},15z`;
+const SERV = [["mall", "🛍️ مجمعات وأسواق", ['nwr["shop"="mall"]', 'nwr["amenity"="marketplace"]', 'nwr["shop"="department_store"]']],
+  ["mosque", "🕌 مساجد", ['nwr["amenity"="place_of_worship"]["religion"="muslim"]']], ["exchange", "💱 صرافة", ['nwr["amenity"="bureau_de_change"]']],
+  ["atm", "🏧 صراف آلي", ['nwr["amenity"="atm"]']], ["car", "🚗 تأجير سيارات", ['nwr["amenity"="car_rental"]']], ["cinema", "🎬 سينما", ['nwr["amenity"="cinema"]']],
+  ["pharmacy", "💊 صيدليات", ['nwr["amenity"="pharmacy"]']], ["hospital", "🏥 مستشفيات", ['nwr["amenity"="hospital"]']]];
+const SERVKEY = "map-serv-" + ID, serv = { cat: "mall", km: 3, list: [] };
+async function showServices() {
+  layer.clearLayers(); cur.i = -2; $("day").onclick = null;
+  const [key, label, sel] = SERV.find(x => x[0] === serv.cat), me = Geo.last, c = me || map.getCenter(), at = { lat: c.lat, lng: c.lng };
+  const head = () => `<div class="day-head"><h2>🛎️ خدمات قريبة</h2><p>${me ? "حول موقعك" : "حول وسط الخريطة. اضغط «📍 موقعي» عشان تبحث حولك"}، في حدود ${serv.km} كم. بدون إنترنت: تطبيق Organic Maps فيه كل هذي الخدمات.</p></div>
+    <div class="cats" id="scats">${SERV.map(([k, l]) => `<button class="chip" data-s="${k}" aria-pressed="${k === serv.cat}">${l}</button>`).join("")}</div>`;
+  $("day").innerHTML = head() + '<p class="offline-note" style="padding:12px 16px">جارٍ البحث…</p>';
+  $("scats").onclick = e => { const b = e.target.closest("[data-s]"); if (b) { serv.cat = b.dataset.s; serv.km = 3; showServices(); } };
+  const saved = ls.get(SERVKEY) || {};
+  let list = null, note = "";
+  if (navigator.onLine) {
+    const query = `[out:json][timeout:20];(${sel.map(s => `${s}(around:${serv.km * 1000},${at.lat},${at.lng});`).join("")});out center 60;`;
+    for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) {
+      const stop = new AbortController(), tm = setTimeout(() => stop.abort(), 8000); // a busy server must not leave the page waiting
+      try { const r = await fetch(ep, { method: "POST", signal: stop.signal, body: "data=" + encodeURIComponent(query), headers: { "content-type": "application/x-www-form-urlencoded" } }); clearTimeout(tm);
+        if (!r.ok) continue; const j = await r.json();
+        list = j.elements.map(e => ({ name: (e.tags && (e.tags["name:ar"] || e.tags.name || e.tags["name:en"])) || label.slice(3), hours: e.tags && e.tags.opening_hours || "",
+          lat: e.lat ?? e.center?.lat, lng: e.lon ?? e.center?.lon })).filter(x => x.lat != null);
+        saved[key] = { at, km: serv.km, list, when: Date.now() }; ls.set(SERVKEY, saved); break; } catch {} finally { clearTimeout(tm); }
+    }
+  }
+  if (!list && saved[key]) { list = saved[key].list; note = "بدون إنترنت: هذي آخر نتائج محفوظة على جوالك."; }
+  if (cur.i !== -2) return; // the traveler moved to another tab meanwhile
+  const gBtn = `<div style="padding:4px 16px 12px"><a class="btn" style="width:100%" target="_blank" rel="noopener" href="${gmaps(key, at)}">🔎 ابحث عن ${esc(GTERM[key])} في خرائط جوجل</a></div>`;
+  if (!list) { $("day").innerHTML = head() + (navigator.onLine ? '<p class="offline-note" style="padding:12px 16px">خدمة البحث مشغولة الحين. استخدم زر خرائط جوجل:</p>' + gBtn : '<p class="offline-note" style="padding:12px 16px">تحتاج إنترنت للبحث عن الخدمات. بدون إنترنت استخدم تطبيق Organic Maps.</p>'); $("scats").onclick = e => { const b = e.target.closest("[data-s]"); if (b) { serv.cat = b.dataset.s; showServices(); } }; return; }
+  list.sort((a, b) => Geo.km(at, a) - Geo.km(at, b)); serv.list = list;
+  for (const [n, s] of list.entries()) L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [26, 26], html: `<div class="hpin" style="font-size:20px;line-height:26px">${label.split(" ")[0]}</div>` }) })
+    .bindPopup(`<div class="pop"><b>${esc(s.name)}</b>${s.hours ? `<div dir="ltr">${esc(s.hours)}</div>` : ""}${Geo.last ? Geo.line(Geo.last, s) : ""}<button class="btn" onclick="goServ(${n})">🧭 انطلق</button></div>`).addTo(layer);
+  if (list.length) map.fitBounds(L.latLngBounds(list.slice(0, 15).map(s => [s.lat, s.lng]).concat([[at.lat, at.lng]])).pad(0.15), { maxZoom: 16 });
+  $("day").innerHTML = head() + (note ? `<p class="offline-note" style="padding:8px 16px 0">${note}</p>` : "")
+    + (list.length ? list.slice(0, 40).map((s, n) => `<article class="place" style="grid-template-columns:44px 1fr"><div class="thumb ph" style="width:44px;height:44px;font-size:22px;background:var(--bg)">${label.split(" ")[0]}</div>
+      <div><h3>${esc(s.name)}</h3><div class="meta">${Geo.km(at, s).toFixed(1)} كم${s.hours ? " · " + esc(s.hours) : ""}</div>
+      <div class="go"><button class="btn" onclick="goServ(${n})">🧭 انطلق</button><button class="btn ghost" data-sv="${n}">على الخريطة</button></div></div></article>`).join("")
+      : `<p class="offline-note" style="padding:12px 16px">ما لقينا ${esc(label.slice(3))} في حدود ${serv.km} كم.</p>`)
+    + (navigator.onLine ? gBtn : "") + (serv.km < 20 && navigator.onLine ? `<button class="btn ghost more" id="wider">وسّع البحث إلى ${serv.km < 10 ? 10 : 25} كم</button>` : "");
+  $("scats").onclick = e => { const b = e.target.closest("[data-s]"); if (b) { serv.cat = b.dataset.s; serv.km = 3; showServices(); } };
+  $("day").onclick = e => {
+    if (e.target.id === "wider") { serv.km = serv.km < 10 ? 10 : 25; showServices(); return; }
+    const b = e.target.closest("[data-sv]"); if (!b) return; const s = serv.list[+b.dataset.sv];
+    $("tmap").scrollIntoView({ behavior: "smooth" }); map.setView([s.lat, s.lng], 17);
+  };
+}
+function goServ(n) { const s = serv.list[n], l = SERV.find(x => x[0] === serv.cat)[1]; if (s) Geo.guide({ name: s.name, city: l.slice(3), lat: s.lat, lng: s.lng }); }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S) { inbox(); if (document.querySelector(".gate") || !S.consent) gate(); } });
 async function saveOffline(T) {
   const btn = $("save"); btn.disabled = true; btn.textContent = "جارٍ الحفظ…";
@@ -510,7 +608,7 @@ async function saveOffline(T) {
     if (!("serviceWorker" in navigator) || !window.caches) throw 0;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw11pswy", "../../vendor/leaflet.css", "../../style.css?v=mw11pswy", "manifest.webmanifest"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw17ktwl", "../../vendor/leaflet.css", "../../style.css?v=mw17ktwl", "manifest.webmanifest"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));

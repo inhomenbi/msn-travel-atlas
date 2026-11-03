@@ -9,7 +9,7 @@
 <link rel="manifest" id="mf" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../style.css?v=mw11pswy">
+<link rel="stylesheet" href="../style.css?v=mw17ktwl">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -27,7 +27,7 @@ textarea { min-height: 80px; resize: vertical; } .row { display: flex; gap: 8px;
 .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .quick .chip { font-size: 13.5px; }
 .list { list-style: none; margin: 0; padding: 0; } .list li { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
 .list li > div { flex: 1; min-width: 0; } .list small { display: block; color: var(--muted); font-size: 12px; }
-.list .btn { height: 32px; padding: 0 10px; font-size: 13px; } .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.list .btn { height: 32px; padding: 0 8px; font-size: 12.5px; } .list li { flex-wrap: wrap; } .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .tag.on { background: #e7f4ea; color: var(--ok); } .tag.off { background: #fde8e6; color: var(--warn); }
 .ok { color: var(--ok); font-size: 14px; min-height: 20px; margin-top: 6px; }
 </style>
@@ -43,11 +43,17 @@ textarea { min-height: 80px; resize: vertical; } .row { display: flex; gap: 8px;
     <div class="quick" id="quick"><button class="chip" data-min="10">بعد 10 دقائق</button><button class="chip" data-min="15">بعد 15 دقيقة</button><button class="chip" data-min="30">بعد 30 دقيقة</button><button class="chip" data-min="60">بعد ساعة</button></div>
     <div class="row"><input id="busAt" type="datetime-local" dir="ltr" aria-label="وقت التحرك"><input id="busPlace" placeholder="مكان التجمع (مثال: بوابة المتحف)"></div>
     <button class="btn wide" id="busSend">أرسل تنبيه الباص</button><div class="ok" id="busOk"></div></section>
+  <section class="card"><h2>📍 نقطة التقاء أو مكان مفيد</h2>
+    <p class="note" style="margin:0">يظهر على خريطة كل المسافرين مع زر «انطلق» يوصلهم له، ويوصلهم تنبيه. مثال: بوابة المجمع، مطعم الغداء، مكتب الصرافة.</p>
+    <div class="row"><input id="ptName" maxlength="80" placeholder="اسم المكان (مثال: بوابة 3 في المجمع)"></div>
+    <div class="row"><input id="ptAt" dir="ltr" placeholder="الإحداثيات أو رابط جوجل ماب"><button class="btn ghost" id="ptMe" type="button">📍 موقعي الحين</button></div>
+    <div class="row"><input id="ptNote" maxlength="200" placeholder="ملاحظة (اختياري، مثال: نتجمع الساعة 5)"></div>
+    <button class="btn wide" id="ptSend">أرسل المكان للمسافرين</button><div class="ok" id="ptOk"></div></section>
   <section class="card"><h2>📣 رسالة للمجموعة</h2>
     <textarea id="text" maxlength="500" placeholder="مثال: الغداء الساعة 1:30 في المطعم المقابل للفندق"></textarea>
     <button class="btn wide" id="send">إرسال للكل</button><div class="ok" id="sendOk"></div></section>
   <section class="card"><h2>👥 المسافرون</h2><div class="note" id="codes"></div><ul class="list" id="devs"></ul>
-    <p class="note">«بدون تنبيهات» يعني المسافر ما سمح بالتنبيهات بعد، فما يوصله شي والجوال مقفل. «إيقاف» يقفل الخريطة على ذاك الجوال ويفضّي مكانه.</p></section>
+    <p class="note">«بدون تنبيهات» يعني المسافر ما سمح بالتنبيهات بعد، فما يوصله شي والجوال مقفل. «كتم» يوقف التنبيهات عن جوال معيّن (مثلاً عائلة ما بتلتحق بجولة اليوم) والباقين يوصلهم عادي. «إيقاف» يقفل الخريطة على ذاك الجوال ويفضّي مكانه.</p></section>
   <section class="card"><h2>🕘 آخر الرسائل</h2><ul class="list" id="msgs"></ul></section>
   <p class="note" style="text-align:center"><button class="chip" id="out">خروج</button></p>
 </main>
@@ -97,7 +103,8 @@ async function load() {
   $("count").textContent = `${j.devices.length} جوال · ${j.devices.filter(d => d.push).length} فعّلوا التنبيهات`;
   $("codes").innerHTML = live.map(c => `رقم سري ${esc(c.h)}…: ${(by[c.h] || []).length} من ${c.n} جوال`).join("<br>");
   $("devs").innerHTML = j.devices.map(d => `<li><div>${esc(d.name || "بدون اسم")}<small>دخل ${esc(ago(d.at))} · آخر ظهور ${esc(ago(d.seen))}</small></div>
-    <span class="tag ${d.push ? "on" : "off"}">${d.push ? "🔔 تنبيهات" : "بدون تنبيهات"}</span><button class="btn ghost" data-kick="${esc(d.k)}">إيقاف</button></li>`).join("") || '<li class="note">ما دخل أحد بعد.</li>';
+    <span class="tag ${d.push ? "on" : "off"}">${d.push ? "🔔 تنبيهات" : "بدون تنبيهات"}</span>${d.mute > Date.now() ? `<button class="btn ghost" data-mute="${esc(d.k)}" data-until="0" title="مكتوم حتى ${esc(when(d.mute))}">🔔 إلغاء الكتم</button>`
+      : `<button class="btn ghost" data-mute="${esc(d.k)}" data-until="day">🔕 كتم اليوم</button><button class="btn ghost" data-mute="${esc(d.k)}" data-until="all">🔕 دائماً</button>`}<button class="btn ghost" data-kick="${esc(d.k)}">إيقاف</button></li>`).join("") || '<li class="note">ما دخل أحد بعد.</li>';
   $("msgs").innerHTML = j.msgs.slice().reverse().map(m => `<li><div>${esc(m.text)}<small>${esc(when(m.at))}${m.who === "lead" ? " · أنت" : m.who === "agency" ? " · الوكالة" : ""}</small></div></li>`).join("") || '<li class="note">لا توجد رسائل بعد.</li>';
 }
 const localInput = t => new Date(t - new Date(t).getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
@@ -115,6 +122,26 @@ $("send").addEventListener("click", async () => {
   const text = $("text").value.trim(); if (!text) return; $("send").disabled = true;
   try { await api("/lead/msg", { text }); $("text").value = ""; done("sendOk", "✓ أُرسلت لكل المسافرين"); load(); } catch { done("sendOk", "تعذر الإرسال. تأكد من الإنترنت."); }
   $("send").disabled = false;
+});
+// Mute one phone: for the rest of today (the leader's day) or until turned back on.
+document.addEventListener("click", async e => { const b = e.target.closest("[data-mute]"); if (!b) return;
+  const u = b.dataset.until, d = new Date(); d.setHours(24, 0, 0, 0);
+  const until = u === "day" ? d.getTime() : u === "all" ? Date.now() + 3650 * 864e5 : 0;
+  b.disabled = true; try { await api("/lead/mute", { k: b.dataset.mute, until }); load(); } catch { alert("تعذر التغيير. تأكد من الإنترنت."); b.disabled = false; } });
+// Meeting point: coordinates typed or from a Google Maps link (@lat,lng or ?q=lat,lng), or the leader's own position.
+const parseAt = t => { const m = String(t).match(/(-?\d{1,2}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)/); return m && Math.abs(m[1]) <= 90 && Math.abs(m[2]) <= 180 ? { lat: +m[1], lng: +m[2] } : null; };
+$("ptMe").addEventListener("click", () => {
+  if (!navigator.geolocation) return done("ptOk", "الجوال ما يدعم تحديد الموقع.");
+  done("ptOk", "جارٍ تحديد موقعك…");
+  navigator.geolocation.getCurrentPosition(p => { $("ptAt").value = p.coords.latitude.toFixed(6) + ", " + p.coords.longitude.toFixed(6); done("ptOk", "✓ أخذنا موقعك الحالي."); },
+    () => done("ptOk", "ما قدرنا نحدد موقعك. اسمح بالموقع أو الصق الإحداثيات."), { enableHighAccuracy: true, timeout: 15000 });
+});
+$("ptSend").addEventListener("click", async () => {
+  const p = parseAt($("ptAt").value); if (!p) return done("ptOk", "حدد المكان: اضغط «📍 موقعي الحين» أو الصق الإحداثيات.");
+  $("ptSend").disabled = true;
+  try { await api("/lead/point", { name: $("ptName").value.trim(), note: $("ptNote").value.trim(), ...p }); $("ptName").value = $("ptNote").value = $("ptAt").value = ""; done("ptOk", "✓ وصل المكان للمسافرين."); load(); }
+  catch { done("ptOk", "تعذر الإرسال. تأكد من الإنترنت."); }
+  $("ptSend").disabled = false;
 });
 document.addEventListener("click", async e => { const b = e.target.closest("[data-kick]"); if (!b) return;
   if (!confirm("إيقاف الخريطة على هذا الجوال؟ يقدر يدخل مرة ثانية بالرقم السري إذا فيه مكان.")) return;
