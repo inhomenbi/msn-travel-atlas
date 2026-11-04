@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw1vpf1o">
+<link rel="stylesheet" href="../../style.css?v=mw1wlxt3">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -88,7 +88,7 @@ body { overflow: auto; }
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw1vpf1o"></script>
+<script src="../../geo.js?v=mw1wlxt3"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -203,7 +203,7 @@ function watchExpiry(code, until, seen, daysSeen) {
       const F = await getFile(), slot = await slotFor(F, code); if (!slot) return lock("stopped");
       if (F.v !== seen) { seen = F.v; const B = await openBody(F, slot);
         if (JSON.stringify(B.days || []) !== daysSeen) return location.reload(); // a new trip program: open it again
-        cur.T.hotel = B.hotel; cur.T.bus = B.bus || []; showHotel(); busTick(); }
+        cur.T.hotel = B.hotel; cur.T.bus = B.bus || []; cur.T.svc = B.svc; showHotel(); busTick(); }
       tick();
     } catch (e) { if (e === "gone") lock("gone"); }
   };
@@ -265,7 +265,6 @@ function render(T) {
   $("locBtn").addEventListener("click", startLocate);
   cur.T = T; T.days.length ? showDay(T, first) : showArea(T);
   showHotel(); busTick(); setInterval(busTick, 15000);
-  setTimeout(() => fetchStore(T), 5000); // markets and fuel stations for offline use
   saveOffline(T); // the page, its photos and libraries, kept on the phone for use without internet
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("../../sw.js", { scope: "../../" }).catch(() => {});
 }
@@ -575,13 +574,13 @@ function drawPoints(list) {
       <div style="font-size:12px;color:#777">من قائد الرحلة</div>${Geo.last ? Geo.line(Geo.last, p) : ""}<button class="btn" onclick="goPoint(${p.id})">🧭 انطلق</button></div>`).addTo(pts);
 }
 function goPoint(id) { const p = points.find(x => x.id === id); if (p) Geo.guide({ name: p.place || "نقطة التقاء", city: "نقطة التقاء", lat: p.lat, lng: p.lng }); }
-// Nearby services (OpenStreetMap search, needs internet) around my location or the map's center. Markets and fuel
-// stations of the trip's cities are fetched once when online and kept on the phone, so they also work offline; for
-// the other kinds the last results are kept. Each kind also has a Google Maps search around the same spot.
-const SERV = [["mall", "🛍️ أسواق ومجمعات", ["mall", "supermarket", "marketplace"], "سوق"], ["fuel", "⛽ محطات وقود", ["fuel"], "محطة وقود"],
+// Nearby services around my location or the map's center. Markets (malls included) and fuel stations come with the map
+// itself (collected by the settings file), so they work offline and need no search. The other kinds are searched on
+// OpenStreetMap when online (the last results are kept). Each kind also has a Google Maps search around the same spot.
+const SERV = [["mall", "🛍️ أسواق ومجمعات تجارية", ["mall", "supermarket", "marketplace"], "سوق"], ["fuel", "⛽ محطات وقود", ["fuel"], "محطة وقود"],
   ["mosque", "🕌 مساجد", ["مسجد"], "مسجد"], ["exchange", "💱 صرافة", ["bureau de change"], "صرافة"], ["atm", "🏧 صراف آلي", ["atm"], "صراف آلي"],
   ["car", "🚗 تأجير سيارات", ["car rental"], "تأجير سيارات"], ["cinema", "🎬 سينما", ["cinema"], "سينما"], ["pharmacy", "💊 صيدليات", ["pharmacy"], "صيدلية"], ["hospital", "🏥 مستشفيات", ["hospital"], "مستشفى"]];
-const OFFLINE_KINDS = ["mall", "fuel"], SERVKEY = "map-serv-" + ID, STORE = "map-svc-" + ID, serv = { cat: "mall", km: 3, list: [] };
+const OFFLINE_KINDS = ["mall", "fuel"], SERVKEY = "map-serv-" + ID, serv = { cat: "mall", km: 3, list: [] };
 const gmaps = (term, at) => `https://www.google.com/maps/search/${encodeURIComponent(term)}/@${at.lat.toFixed(5)},${at.lng.toFixed(5)},15z`;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function nomi(term, at, km) {
@@ -597,28 +596,19 @@ async function search(kind, at, km) {
   for (const [n, term] of kind[2].entries()) { if (n) await wait(1100); const r = await nomi(term, at, km); if (r) { ok = true; all = all.concat(r); } } // one request a second
   return ok ? dedup(all) : null;
 }
-// Once a week, online: markets and fuel around each of the trip's main cities (up to 8), kept on the phone.
-async function fetchStore(T) {
-  const st = ls.get(STORE); if ((st && Date.now() - st.at < 7 * 864e5) || !navigator.onLine) return;
-  const by = {}; for (const s of T.area) (by[s.country + "|" + s.city] ||= []).push(s);
-  const cities = Object.values(by).sort((a, b) => b.length - a.length).slice(0, 8).map(l => ({ lat: l.reduce((x, s) => x + s.lat, 0) / l.length, lng: l.reduce((x, s) => x + s.lng, 0) / l.length }));
-  if (T.hotel) cities.unshift({ lat: T.hotel.lat, lng: T.hotel.lng });
-  const out = { at: Date.now(), mall: [], fuel: [] };
-  for (const c of cities) for (const k of OFFLINE_KINDS) { const r = await search(SERV.find(x => x[0] === k), c, 8); if (r) out[k] = dedup(out[k].concat(r)).slice(0, 600); await wait(1100); }
-  if (out.mall.length || out.fuel.length) ls.set(STORE, out);
-}
 async function showServices() {
   layer.clearLayers(); cur.i = -2; $("day").onclick = null;
   const kind = SERV.find(x => x[0] === serv.cat), [key, label, , gterm] = kind, me = Geo.last, c = me || map.getCenter(), at = { lat: c.lat, lng: c.lng };
-  const head = () => `<div class="day-head"><h2>🛎️ خدمات قريبة</h2><p>${me ? "حول موقعك" : "حول وسط الخريطة. اضغط «📍 موقعي» عشان تبحث حولك"}، في حدود ${serv.km} كم.${OFFLINE_KINDS.includes(key) ? " الأسواق ومحطات الوقود محفوظة على جوالك وتطلع بدون إنترنت." : ""}</p></div>
+  const head = () => `<div class="day-head"><h2>🛎️ خدمات قريبة</h2><p>${me ? "حول موقعك" : "حول وسط الخريطة. اضغط «📍 موقعي» عشان تبحث حولك"}${OFFLINE_KINDS.includes(key) && cur.T.svc ? "، الأقرب أولاً. الأسواق ومحطات الوقود محفوظة في خريطتك وتطلع بدون إنترنت." : "، في حدود " + serv.km + " كم."}</p></div>
     <div class="cats" id="scats">${SERV.map(([k, l]) => `<button class="chip" data-s="${k}" aria-pressed="${k === serv.cat}">${l}</button>`).join("")}</div>`;
   const bind = () => { $("scats").onclick = e => { const b = e.target.closest("[data-s]"); if (b) { serv.cat = b.dataset.s; serv.km = 3; showServices(); } }; };
   $("day").innerHTML = head() + '<p class="offline-note" style="padding:12px 16px">جارٍ البحث…</p>'; bind();
-  const saved = ls.get(SERVKEY) || {}, store = ls.get(STORE);
-  let list = navigator.onLine ? await search(kind, at, serv.km) : null, note = "";
-  if (list) { saved[key] = { at, list, when: Date.now() }; ls.set(SERVKEY, saved); }
-  else if (OFFLINE_KINDS.includes(key) && store && store[key].length) { list = store[key].filter(s => Geo.km(at, s) <= Math.max(serv.km, 25)); note = navigator.onLine ? "" : "بدون إنترنت: من القائمة المحفوظة على جوالك."; }
-  else if (saved[key]) { list = saved[key].list; note = "بدون إنترنت: هذي آخر نتائج محفوظة على جوالك."; }
+  const saved = ls.get(SERVKEY) || {}, inMap = OFFLINE_KINDS.includes(key) && cur.T.svc && cur.T.svc[key];
+  let list = null, note = "";
+  if (inMap) list = cur.T.svc[key].map(r => ({ name: r[0], lat: r[1], lng: r[2], addr: r[3] || "" })); // from the map, no search: the nearest come first
+  else { list = navigator.onLine ? await search(kind, at, serv.km) : null;
+    if (list) { saved[key] = { at, list, when: Date.now() }; ls.set(SERVKEY, saved); }
+    else if (saved[key]) { list = saved[key].list; note = "بدون إنترنت: هذي آخر نتائج محفوظة على جوالك."; } }
   if (cur.i !== -2) return; // the traveler moved to another tab meanwhile
   const gBtn = navigator.onLine ? `<div style="padding:4px 16px 12px"><a class="btn ghost" style="width:100%" target="_blank" rel="noopener" href="${gmaps(gterm, at)}">🔎 ابحث عن ${esc(gterm)} في خرائط جوجل</a></div>` : "";
   if (!list) { $("day").innerHTML = head() + `<p class="offline-note" style="padding:12px 16px">${navigator.onLine ? "خدمة البحث مشغولة الحين. استخدم زر خرائط جوجل:" : "تحتاج إنترنت للبحث عن هذي الخدمة."}</p>` + gBtn; bind(); return; }
@@ -647,7 +637,7 @@ async function saveOffline(T) {
     if (!("serviceWorker" in navigator) || !window.caches) return;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw1vpf1o", "../../vendor/leaflet.css", "../../style.css?v=mw1vpf1o", "manifest.webmanifest"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw1wlxt3", "../../vendor/leaflet.css", "../../style.css?v=mw1wlxt3", "manifest.webmanifest"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));
