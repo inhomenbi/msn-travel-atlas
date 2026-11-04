@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw1wlxt3">
+<link rel="stylesheet" href="../../style.css?v=mw26chqh">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -88,7 +88,7 @@ body { overflow: auto; }
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw1wlxt3"></script>
+<script src="../../geo.js?v=mw26chqh"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -175,7 +175,8 @@ async function unlock(code, silent) {
     // iPhone: alerts need the map opened from the home screen, so it joins (and takes a place on the code) only there.
     if (raw.srv && isIOS && !standalone) { store.set(code); $("msg").textContent = ""; S = null; return gate(); }
     if (raw.srv) await join(raw.srv, code, ($("who") && $("who").value.trim()) || "");
-    const daysSeen = JSON.stringify(raw.days || []), T = await expand(raw);
+    if (raw.svcAt) raw.svc = await getSvc(slot) || raw.svc; // markets and fuel stations: their own file next to the map's
+    const daysSeen = JSON.stringify(raw.days || []); svcSeen = svcSig(raw); const T = await expand(raw);
     store.set(code); T.until = slot.e;
     render(T); watchExpiry(code, slot.e, F.v, daysSeen);
     if (S) { inbox(); setInterval(inbox, 30000); gate(); showShare(); locTick(); setInterval(locTick, 12e4); }
@@ -188,9 +189,19 @@ async function openBody(F, slot) {
   const dk = await crypto.subtle.importKey("raw", b64(slot.k), "AES-GCM", false, ["decrypt"]);
   return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(F.v) }, dk, b64(F.d))));
 }
+// The map's markets and fuel stations (sealed with the same key), kept on the phone for use without internet.
+const SFILE = `k/${ID}.s.json`;
+async function getSvc(slot) {
+  let F = null;
+  try { const r = await fetch(SFILE, { cache: "no-cache" }); if (r.ok) { F = await r.clone().json(); if (window.caches) caches.open(CACHE).then(c => c.put(SFILE, r)).catch(() => {}); } } catch {}
+  if (!F && window.caches) { const hit = await caches.match(SFILE); if (hit) F = await hit.json(); }
+  try { return F ? await openBody(F, slot) : null; } catch { return null; }
+}
 // The code stops working at its expiry, even with the page open; and while online the page checks every minute that
 // the agency has not stopped the code or deleted the map (either way it locks and asks for a new code), and picks up
 // changes to the hotel and bus times.
+let svcSeen = "";
+const svcSig = B => B.svcAt ? "f" + B.svcAt : B.svc ? (B.svc.at || 0) + "" : "";
 function watchExpiry(code, until, seen, daysSeen) {
   const lock = why => { store.del(); try { sessionStorage.setItem("map-expired", ID + "|" + why); } catch {} location.reload(); };
   const tick = () => {
@@ -202,8 +213,8 @@ function watchExpiry(code, until, seen, daysSeen) {
     try {
       const F = await getFile(), slot = await slotFor(F, code); if (!slot) return lock("stopped");
       if (F.v !== seen) { seen = F.v; const B = await openBody(F, slot);
-        if (JSON.stringify(B.days || []) !== daysSeen) return location.reload(); // a new trip program: open it again
-        cur.T.hotel = B.hotel; cur.T.bus = B.bus || []; cur.T.svc = B.svc; showHotel(); busTick(); }
+        if (JSON.stringify(B.days || []) !== daysSeen || svcSig(B) !== svcSeen) return location.reload(); // a new program or new markets: open it again
+        cur.T.hotel = B.hotel; cur.T.bus = B.bus || []; showHotel(); busTick(); }
       tick();
     } catch (e) { if (e === "gone") lock("gone"); }
   };
@@ -217,9 +228,21 @@ async function expand(B) {
   const S = r => ({ id: r[0], country: r[1], city: r[2], name: r[3], en: r[4], cat: r[5], gem: r[6] === 1, desc: r[7], lat: r[8], lng: r[9], img: r[10], unesco: r[11] === 1, wdesc: r[12] === 1 });
   B.area = B.places.map(S); delete B.places;
   const byId = new Map(B.area.map(s => [s.id, s]));
+  B.area.push(...svcPlaces(B.svc, B.area));
   B.days = (B.days || []).map(d => ({ title: d.title || "", note: d.note || "", date: d.date || "",
     sites: d.sites.map(x => { const s = byId.get(x.id || x); return s ? { ...s, note: x.note || "" } : null; }).filter(Boolean) }));
   return B;
+}
+// Markets (malls included) and fuel stations sealed in the map with its places: on the same map, with the same country,
+// city, search and category filters. Row: [kind "m"/"f", name, lat, lng, note, country, city] (the first collection had
+// {mall, fuel} rows [name, lat, lng, address] with no city: each takes the nearest place's).
+const SVC_CAT = { m: "أسواق ومجمعات", f: "محطات وقود" };
+function svcPlaces(svc, places) {
+  if (!svc) return [];
+  const rows = svc.rows ? svc.rows.concat(svc.own || []) : [...(svc.mall || []).map(r => ["m", ...r]), ...(svc.fuel || []).map(r => ["f", ...r])];
+  return rows.map((r, i) => { let country = r[5], city = r[6];
+    if (!country && places.length) { const at = { lat: r[2], lng: r[3] }, p = places.reduce((b, s) => km(at, s) < km(at, b) ? s : b); country = p.country; city = p.city; }
+    return { id: "svc" + i, svc: r[0], country: country || "", city: city || "", name: r[1], en: "", cat: SVC_CAT[r[0]] || SVC_CAT.m, lat: r[2], lng: r[3], desc: r[4] || "", img: "" }; });
 }
 // Saved copies of the old public atlas data (before places were sealed in the map file) are removed from the phone.
 if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.open(k).then(c => c.keys().then(rs => rs.forEach(r => { if (/\/data\/sites\.json/.test(r.url)) c.delete(r); }))))).catch(() => {});
@@ -248,7 +271,7 @@ function render(T) {
       <button class="btn ghost" id="hotelBtn" hidden>🏨 الفندق</button>
       <button class="btn ghost" id="locBtn">📍 موقعي</button>
 </div>`;
-  map = L.map("tmap", { zoomControl: false });
+  map = L.map("tmap", { zoomControl: false, preferCanvas: true });
   L.control.zoom({ position: "topleft" }).addTo(map);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
   layer = L.layerGroup().addTo(map); fixed = L.layerGroup().addTo(map); pts = L.layerGroup().addTo(map);
@@ -270,13 +293,15 @@ function render(T) {
 }
 // Area map (pocket guide): every atlas place in the trip's countries; tap one and go. Sorted nearest first once located.
 const CAT_COLOR = { "تاريخي": "#a52714", "طبيعي": "#097138", "ديني": "#0288d1", "ثقافي": "#9c27b0", "متحف": "#f57c00",
-  "معماري": "#455a64", "ترفيهي": "#e91e63", "قرية/بلدة": "#795548", "تسوق": "#d4a017" };
+  "معماري": "#455a64", "ترفيهي": "#e91e63", "قرية/بلدة": "#795548", "تسوق": "#d4a017", "أسواق ومجمعات": "#c77700", "محطات وقود": "#37474f" };
 const APP_COLOR = { "تاريخي": "red", "طبيعي": "green", "ديني": "blue", "ثقافي": "purple", "متحف": "orange", "معماري": "brown",
   "ترفيهي": "pink", "قرية/بلدة": "brown", "تسوق": "yellow" };
 // Filters: country tabs, a city list, a search box and the categories, so a trip of several countries stays easy to browse.
 const area = { cat: "", country: "", city: "", q: "", shown: 30, list: [] };
 const norm = t => String(t || "").replace(/[\u064B-\u065F\u0670]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").toLowerCase();
 const tally = (list, k) => { const o = {}; for (const s of list) o[s[k]] = (o[s[k]] || 0) + 1; return Object.entries(o).sort((a, b) => b[1] - a[1]); };
+const areaCount = list => { const n = k => list.filter(s => (s.svc || "") === k).length;
+  return [[n(""), "مكان سياحي"], [n("m"), "سوق ومجمع تجاري"], [n("f"), "محطة وقود"]].filter(([x]) => x).map(([x, l]) => x + " " + l).join("، "); };
 function showArea(T, keep) {
   layer.clearLayers(); cur.i = -1; geoTimes = null; geoAt = null;
   if (!keep) area.shown = 30;
@@ -285,25 +310,27 @@ function showArea(T, keep) {
   const inC = T.area.filter(s => !area.country || s.country === area.country), cities = tally(inC, "city");
   if (area.city && !cities.some(([c]) => c === area.city)) area.city = "";
   const inCity = inC.filter(s => !area.city || s.city === area.city), q = norm(area.q);
-  const found = inCity.filter(s => !q || norm(s.name + " " + s.city + " " + (s.en || "")).includes(q)), cats = tally(found, "cat");
+  const found = inCity.filter(s => !q || norm(s.name + " " + s.city + " " + (s.en || "") + (s.svc ? " " + s.desc : "")).includes(q)), cats = tally(found, "cat");
   if (area.cat && !cats.some(([c]) => c === area.cat)) area.cat = "";
   area.list = found.filter(s => !area.cat || s.cat === area.cat);
   if (me) area.list.sort((a, b) => Geo.km(me, a) - Geo.km(me, b));
-  for (const s of area.list) s.m = L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [16, 16],
-    html: `<div class="pin${s.gem ? " gem" : ""}" style="background:${CAT_COLOR[s.cat] || "#555"}"></div>` }) })
+  // Markets and fuel stations: small dots (drawn fast, even hundreds of them); tourist places: pins on top.
+  for (const s of area.list) s.m = (s.svc ? L.circleMarker([s.lat, s.lng], { radius: 6, weight: 2, color: "#fff", fillColor: CAT_COLOR[s.cat], fillOpacity: 1 })
+    : L.marker([s.lat, s.lng], { zIndexOffset: 500, icon: L.divIcon({ className: "", iconSize: [16, 16],
+    html: `<div class="pin${s.gem ? " gem" : ""}" style="background:${CAT_COLOR[s.cat] || "#555"}"></div>` }) }))
     .bindPopup(() => `<div class="pop">${s.img ? `<img src="${esc(s.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<b>${esc(s.name)}</b>
-      <div>${esc(s.city)} · ${esc(s.cat)}</div>${Geo.last ? Geo.line(Geo.last, s) : ""}<button class="btn" onclick="goTo('a', ${area.list.indexOf(s)})">🧭 انطلق</button></div>`).addTo(layer);
+      <div>${esc(s.city)} · ${esc(s.cat)}</div>${s.svc && s.desc ? `<div>${esc(s.desc)}</div>` : ""}${Geo.last ? Geo.line(Geo.last, s) : ""}<button class="btn" onclick="goTo('a', ${area.list.indexOf(s)})">🧭 انطلق</button></div>`).addTo(layer);
   if (!keep && area.list.length) map.fitBounds(L.latLngBounds(area.list.map(s => [s.lat, s.lng])).pad(0.1), { maxZoom: 13 });
   const chip = (attr, v, on, label) => `<button class="chip" ${attr}="${esc(v)}" aria-pressed="${on}">${label}</button>`;
   $("day").innerHTML = `<div class="day-head"><h2>خريطة المنطقة: ${esc((T.cities ? [...new Set(T.cities.map(c => c.split("|")[1]))] : T.countries).join(" و"))}</h2>
-      <p>${T.area.length} مكان سياحي. اختر الدولة والمدينة، أو ابحث بالاسم، ثم «انطلق»${me ? "، والقائمة مرتبة من الأقرب إليك." : "، واضغط «📍 موقعي» لترتيبها من الأقرب إليك."}</p></div>`
+      <p>${areaCount(T.area)}. اختر الدولة والمدينة، أو ابحث بالاسم، ثم «انطلق»${me ? "، والقائمة مرتبة من الأقرب إليك." : "، واضغط «📍 موقعي» لترتيبها من الأقرب إليك."}</p></div>`
     + (countries.length > 1 ? `<div class="cats" id="ctry">${chip("data-ctry", "", !area.country, "كل الدول")}${countries.map(([c, n]) => chip("data-ctry", c, area.country === c, `${esc(c)} <small>(${n})</small>`)).join("")}</div>` : "")
     + `<div class="afilter">${cities.length > 1 ? `<select id="acity" aria-label="المدينة"><option value="">كل المدن (${inC.length})</option>${cities.map(([c, n]) => `<option value="${esc(c)}" ${area.city === c ? "selected" : ""}>${esc(c)} (${n})</option>`).join("")}</select>` : ""}
       <input id="aq" type="search" placeholder="🔎 ابحث عن مكان" value="${esc(area.q)}" aria-label="ابحث عن مكان"></div>`
     + `<div class="cats" id="cats">${chip("data-cat", "", !area.cat, "الكل")}${cats.map(([c, n]) => chip("data-cat", c, area.cat === c, `<span class="pin" style="width:10px;height:10px;border-width:1px;background:${CAT_COLOR[c] || "#555"}"></span>${esc(c)} <small>(${n})</small>`)).join("")}</div>`
     + (area.list.length ? "" : '<p class="offline-note" style="padding:12px 16px">ما فيه أماكن بهذا البحث.</p>')
     + area.list.slice(0, area.shown).map((s, n) => `<article class="place">
-      ${s.img ? `<img class="thumb" src="${esc(s.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<div class="thumb ph" style="background:${CAT_COLOR[s.cat] || "#555"}">${s.gem ? "★" : "◉"}</div>`}
+      ${s.svc ? `<div class="thumb ph" style="background:${CAT_COLOR[s.cat]};font-size:24px">${s.svc === "f" ? "⛽" : "🛍️"}</div>` : s.img ? `<img class="thumb" src="${esc(s.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<div class="thumb ph" style="background:${CAT_COLOR[s.cat] || "#555"}">${s.gem ? "★" : "◉"}</div>`}
       <div><h3>${s.gem ? "★ " : ""}${esc(s.name)}</h3><div class="meta">${esc(s.city)}${countries.length > 1 ? " - " + esc(s.country) : ""} · ${esc(s.cat)}${s.unesco ? " · اليونسكو" : ""}</div>
       <div class="eta-slot" data-n="${n}"></div><p>${esc(s.desc)}</p>${s.wdesc ? '<div class="meta">الوصف: ويكيبيديا (CC BY-SA)</div>' : ""}
       <div class="go"><button class="btn" onclick="goTo('a', ${n})">🧭 انطلق</button><button class="btn ghost" data-show="${n}">على الخريطة</button></div></div></article>`).join("")
@@ -577,10 +604,9 @@ function goPoint(id) { const p = points.find(x => x.id === id); if (p) Geo.guide
 // Nearby services around my location or the map's center. Markets (malls included) and fuel stations come with the map
 // itself (collected by the settings file), so they work offline and need no search. The other kinds are searched on
 // OpenStreetMap when online (the last results are kept). Each kind also has a Google Maps search around the same spot.
-const SERV = [["mall", "🛍️ أسواق ومجمعات تجارية", ["mall", "supermarket", "marketplace"], "سوق"], ["fuel", "⛽ محطات وقود", ["fuel"], "محطة وقود"],
-  ["mosque", "🕌 مساجد", ["مسجد"], "مسجد"], ["exchange", "💱 صرافة", ["bureau de change"], "صرافة"], ["atm", "🏧 صراف آلي", ["atm"], "صراف آلي"],
+const SERV = [["mosque", "🕌 مساجد", ["مسجد"], "مسجد"], ["exchange", "💱 صرافة", ["bureau de change"], "صرافة"], ["atm", "🏧 صراف آلي", ["atm"], "صراف آلي"],
   ["car", "🚗 تأجير سيارات", ["car rental"], "تأجير سيارات"], ["cinema", "🎬 سينما", ["cinema"], "سينما"], ["pharmacy", "💊 صيدليات", ["pharmacy"], "صيدلية"], ["hospital", "🏥 مستشفيات", ["hospital"], "مستشفى"]];
-const OFFLINE_KINDS = ["mall", "fuel"], SERVKEY = "map-serv-" + ID, serv = { cat: "mall", km: 3, list: [] };
+const SERVKEY = "map-serv-" + ID, serv = { cat: "mosque", km: 3, list: [] };
 const gmaps = (term, at) => `https://www.google.com/maps/search/${encodeURIComponent(term)}/@${at.lat.toFixed(5)},${at.lng.toFixed(5)},15z`;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function nomi(term, at, km) {
@@ -599,16 +625,14 @@ async function search(kind, at, km) {
 async function showServices() {
   layer.clearLayers(); cur.i = -2; $("day").onclick = null;
   const kind = SERV.find(x => x[0] === serv.cat), [key, label, , gterm] = kind, me = Geo.last, c = me || map.getCenter(), at = { lat: c.lat, lng: c.lng };
-  const head = () => `<div class="day-head"><h2>🛎️ خدمات قريبة</h2><p>${me ? "حول موقعك" : "حول وسط الخريطة. اضغط «📍 موقعي» عشان تبحث حولك"}${OFFLINE_KINDS.includes(key) && cur.T.svc ? "، الأقرب أولاً. الأسواق ومحطات الوقود محفوظة في خريطتك وتطلع بدون إنترنت." : "، في حدود " + serv.km + " كم."}</p></div>
+  const head = () => `<div class="day-head"><h2>🛎️ خدمات قريبة</h2><p>${me ? "حول موقعك" : "حول وسط الخريطة. اضغط «📍 موقعي» عشان تبحث حولك"}، في حدود ${serv.km} كم (تحتاج إنترنت).</p><p>🛍️⛽ الأسواق والمجمعات ومحطات الوقود تلقاها في «🗺️ خريطة المنطقة» مع الأماكن السياحية، وتطلع بدون إنترنت.</p></div>
     <div class="cats" id="scats">${SERV.map(([k, l]) => `<button class="chip" data-s="${k}" aria-pressed="${k === serv.cat}">${l}</button>`).join("")}</div>`;
   const bind = () => { $("scats").onclick = e => { const b = e.target.closest("[data-s]"); if (b) { serv.cat = b.dataset.s; serv.km = 3; showServices(); } }; };
   $("day").innerHTML = head() + '<p class="offline-note" style="padding:12px 16px">جارٍ البحث…</p>'; bind();
-  const saved = ls.get(SERVKEY) || {}, inMap = OFFLINE_KINDS.includes(key) && cur.T.svc && cur.T.svc[key];
-  let list = null, note = "";
-  if (inMap) list = cur.T.svc[key].map(r => ({ name: r[0], lat: r[1], lng: r[2], addr: r[3] || "" })); // from the map, no search: the nearest come first
-  else { list = navigator.onLine ? await search(kind, at, serv.km) : null;
-    if (list) { saved[key] = { at, list, when: Date.now() }; ls.set(SERVKEY, saved); }
-    else if (saved[key]) { list = saved[key].list; note = "بدون إنترنت: هذي آخر نتائج محفوظة على جوالك."; } }
+  const saved = ls.get(SERVKEY) || {};
+  let list = navigator.onLine ? await search(kind, at, serv.km) : null, note = "";
+  if (list) { saved[key] = { at, list, when: Date.now() }; ls.set(SERVKEY, saved); }
+  else if (saved[key]) { list = saved[key].list; note = "بدون إنترنت: هذي آخر نتائج محفوظة على جوالك."; }
   if (cur.i !== -2) return; // the traveler moved to another tab meanwhile
   const gBtn = navigator.onLine ? `<div style="padding:4px 16px 12px"><a class="btn ghost" style="width:100%" target="_blank" rel="noopener" href="${gmaps(gterm, at)}">🔎 ابحث عن ${esc(gterm)} في خرائط جوجل</a></div>` : "";
   if (!list) { $("day").innerHTML = head() + `<p class="offline-note" style="padding:12px 16px">${navigator.onLine ? "خدمة البحث مشغولة الحين. استخدم زر خرائط جوجل:" : "تحتاج إنترنت للبحث عن هذي الخدمة."}</p>` + gBtn; bind(); return; }
@@ -637,7 +661,7 @@ async function saveOffline(T) {
     if (!("serviceWorker" in navigator) || !window.caches) return;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw1wlxt3", "../../vendor/leaflet.css", "../../style.css?v=mw1wlxt3", "manifest.webmanifest"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw26chqh", "../../vendor/leaflet.css", "../../style.css?v=mw26chqh", "manifest.webmanifest"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));
