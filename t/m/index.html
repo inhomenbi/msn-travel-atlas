@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" href="../../icons/map-192.png">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw281u6l">
+<link rel="stylesheet" href="../../style.css?v=mw2hzm10">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -60,7 +60,11 @@ body { overflow: auto; }
 .apps { background: var(--panel); margin: 12px 16px; border-radius: var(--radius); border: 1px solid var(--line); padding: 14px 16px; }
 .apps h2 { margin: 0 0 4px; font-size: 16px; } .apps p { margin: 0 0 10px; color: var(--muted); font-size: 13.5px; line-height: 1.8; }
 .apps .row { display: flex; gap: 8px; flex-wrap: wrap; } .apps .btn { flex: 1; min-width: 150px; }
-.hpin { font-size: 26px; line-height: 32px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+.hpin { font-size: 26px; line-height: 32px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); } .hpin.small { font-size: 18px; line-height: 24px; }
+#tmap { position: relative; } #tmap.picking { cursor: crosshair; }
+.pinhint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; background: #0f4c5c; color: #fff; padding: 8px 12px; border-radius: 20px; font-size: 14px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.3); pointer-events: auto; }
+.pinhint button { background: #fff; color: #0f4c5c; border: 0; border-radius: 12px; padding: 2px 10px; margin-inline-start: 8px; font: inherit; font-size: 13px; cursor: pointer; }
+.dock .btn[aria-pressed="true"] { background: var(--brand); color: #fff; }
 .busbar { display: none; align-items: center; gap: 10px; background: #fff4d6; color: #5c3d00; border-bottom: 1px solid #f0d58c; padding: 10px 16px; font-size: 14.5px; line-height: 1.6; }
 .busbar.on { display: flex; } .busbar b { font-size: 16px; } .busbar.soon { background: #ffe1dc; color: #7a1408; border-color: #f3b2a8; }
 .buslist { margin: 0 0 10px; padding: 0; list-style: none; } .buslist li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
@@ -107,7 +111,7 @@ body { overflow: auto; }
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw281u6l"></script>
+<script src="../../geo.js?v=mw2hzm10"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -233,7 +237,7 @@ function watchExpiry(code, until, seen, daysSeen) {
       const F = await getFile(), slot = await slotFor(F, code); if (!slot) return lock("stopped");
       if (F.v !== seen) { seen = F.v; const B = await openBody(F, slot);
         if (JSON.stringify(B.days || []) !== daysSeen || svcSig(B) !== svcSeen) return location.reload(); // a new program or new markets: open it again
-        cur.T.hotel = B.hotel; cur.T.bus = B.bus || []; showHotel(); busTick(); }
+        cur.T.hotel = B.hotel; cur.T.hotels = B.hotels; cur.T.bus = B.bus || []; showHotel(); busTick(); }
       tick();
     } catch (e) { if (e === "gone") lock("gone"); }
   };
@@ -289,6 +293,7 @@ function render(T) {
       <p class="offline-note" id="busNote" style="padding:8px 0 0"></p></section>
     <div class="dock">${T.phone ? `<a class="btn" href="https://wa.me/${esc(T.phone.replace(/\D/g, ""))}" target="_blank" rel="noopener">💬 واتساب</a>` : ""}
       <button class="btn ghost" id="hotelBtn" hidden>🏨 الفندق</button>
+      <button class="btn ghost" id="pinBtn">📌 نقطة</button>
       <button class="btn ghost" id="locBtn">📍 موقعي</button>
 </div>`;
   map = L.map("tmap", { zoomControl: false, preferCanvas: true });
@@ -308,8 +313,12 @@ function render(T) {
     L.DomEvent.on(b, "click", e => { L.DomEvent.stop(e); startLocate(); }); return b; } });
   map.addControl(new Locate());
   $("locBtn").addEventListener("click", startLocate);
+  pinLayer = L.layerGroup().addTo(map); $("pinBtn").addEventListener("click", pinMode);
+  map.on("contextmenu", e => setPin(e.latlng)); // a long press anywhere on the map
+  map.on("click", e => { if (picking) { picking = false; pinHint(false); setPin(e.latlng); } });
+  showPin(false);
   cur.T = T; T.days.length ? showDay(T, first) : showArea(T);
-  showHotel(); busTick(); setInterval(busTick, 15000);
+  showHotel(); busTick(); setInterval(() => { busTick(); if (hotelKey() !== hotelSeen) showHotel(); }, 15000);
   saveOffline(T); // the page, its photos and libraries, kept on the phone for use without internet
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("../../sw.js", { scope: "../../" }).catch(() => {});
 }
@@ -372,7 +381,7 @@ function showArea(T, keep) {
 // Weather for a day of the program (Open-Meteo, forecast up to 16 days ahead) at its first stop, kept for offline use.
 const WX = "map-wx-" + ID, WXC = [[0, "☀️", "صحو"], [2, "🌤️", "غائم جزئياً"], [3, "☁️", "غائم"], [48, "🌫️", "ضباب"], [57, "🌦️", "رذاذ"], [67, "🌧️", "مطر"], [77, "❄️", "ثلج"], [82, "🌧️", "زخات مطر"], [86, "❄️", "زخات ثلج"], [99, "⛈️", "عواصف رعدية"]];
 async function dayWeather(d) {
-  const at = d.sites[0] || cur.T.hotel || cur.T.area[0]; if (!at) return;
+  const at = d.sites[0] || hotelOn(d.date) || cur.T.area[0]; if (!at) return;
   const today = new Date(now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10), day = d.date || today;
   const ahead = (new Date(day + "T12:00") - new Date(today + "T12:00")) / 864e5, el = () => cur.i >= 0 && cur.T.days[cur.i] === d && $("wx");
   if (ahead < 0) return; if (ahead > 15) { if (el()) el().textContent = "🌡️ توقعات الطقس تظهر قبل اليوم بـ 16 يوم."; return; }
@@ -430,13 +439,49 @@ async function updateEta(me) {
   paint();
   if (moved) { const day = cur.i; geoAt = me; const t = await Geo.times(me, stops.slice(0, 50)); if (day === cur.i) { geoTimes = t; paint(); } }
 }
-// Hotel: always on the map, and "🏨 الفندق" opens the guide screen back to it.
-function goHotel() { const h = cur.T.hotel; if (h) Geo.guide({ name: h.name, city: "فندقك", lat: h.lat, lng: h.lng }); }
-function showHotel() {
-  const h = cur.T.hotel; fixed.clearLayers(); $("hotelBtn").hidden = !h; if (!h) return;
-  L.marker([h.lat, h.lng], { zIndexOffset: 1000, icon: L.divIcon({ className: "", iconSize: [32, 32], html: '<div class="hpin">🏨</div>' }) })
-    .bindPopup(`<div class="pop"><b>${esc(h.name)}</b><div>فندقك</div>${Geo.last ? Geo.line(Geo.last, h) : ""}<button class="btn" onclick="goHotel()">🏨 ارجع للفندق</button></div>`).addTo(fixed);
+// Hotels: one per stay, each with its check-in and check-out dates. The map shows the hotel of today (on a moving day,
+// the new one) and "🏨 الفندق" leads back to it; the other hotels of the trip are small pins with their dates.
+const hotelsAll = () => cur.T.hotels || (cur.T.hotel ? [cur.T.hotel] : []);
+const today = () => new Date(now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+function hotelOn(day) {
+  const H = hotelsAll(); if (H.length < 2) return H[0]; day = day || today();
+  const inn = H.filter(h => (!h.from || h.from <= day) && (!h.to || day <= h.to)); if (inn.length) return inn[inn.length - 1];
+  const past = H.filter(h => h.from && h.from <= day); return past.length ? past[past.length - 1] : H[0]; // between stays: the last one
 }
+let hotelSeen = "";
+const hotelKey = () => { const h = hotelOn(); return h ? h.name + h.lat + h.lng + hotelsAll().length : ""; };
+const hDay = s => s ? dayShort(s) : "…";
+function goHotel() { const h = hotelOn(); if (h) Geo.guide({ name: h.name, city: "فندقك", lat: h.lat, lng: h.lng }); }
+function showHotel() {
+  const h = hotelOn(), H = hotelsAll(); fixed.clearLayers(); hotelSeen = hotelKey(); $("hotelBtn").hidden = !h; if (!h) return;
+  for (const x of H) if (x !== h) L.marker([x.lat, x.lng], { zIndexOffset: 500, opacity: .75, icon: L.divIcon({ className: "", iconSize: [24, 24], html: '<div class="hpin small">🏨</div>' }) })
+    .bindPopup(`<div class="pop"><b>${esc(x.name)}</b><div>فندق الرحلة${x.from || x.to ? ` · ${esc(hDay(x.from))} - ${esc(hDay(x.to))}` : ""}</div></div>`).addTo(fixed);
+  L.marker([h.lat, h.lng], { zIndexOffset: 1000, icon: L.divIcon({ className: "", iconSize: [32, 32], html: '<div class="hpin">🏨</div>' }) })
+    .bindPopup(`<div class="pop"><b>${esc(h.name)}</b><div>فندقك${H.length > 1 && (h.from || h.to) ? ` · ${esc(hDay(h.from))} - ${esc(hDay(h.to))}` : ""}</div>${Geo.last ? Geo.line(Geo.last, h) : ""}<button class="btn" onclick="goHotel()">🏨 ارجع للفندق</button></div>`).addTo(fixed);
+}
+// "📌 نقطة": the traveler picks any point on the map (the button then a tap, or a long press) and goes there with the
+// same guide screen. The point stays on this phone (a parked car, a restaurant) until removed or another is picked.
+const PIN = "map-pin-" + ID;
+let pinLayer = null, picking = false;
+function pinHint(on) {
+  document.querySelector(".pinhint")?.remove(); $("tmap").classList.toggle("picking", on); $("pinBtn").setAttribute("aria-pressed", on);
+  if (on) $("tmap").insertAdjacentHTML("afterbegin", '<div class="pinhint" onclick="event.stopPropagation()">اضغط أي مكان في الخريطة <button type="button" onclick="pinMode()">إلغاء</button></div>');
+}
+function pinMode() { picking = !picking; pinHint(picking); if (picking) $("tmap").scrollIntoView({ behavior: "smooth", block: "center" }); }
+function setPin(ll) {
+  const p = { name: "النقطة اللي اخترتها", city: "", lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; ls.set(PIN, p); showPin(true);
+  if (navigator.onLine) fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=ar&lat=${p.lat}&lon=${p.lng}`).then(r => r.json()).then(j => {
+    const a = j.address || {}, nm = j.name || [a.road, a.suburb || a.neighbourhood || a.village].filter(Boolean).join("، ");
+    const q = ls.get(PIN); if (!q || q.lat !== p.lat || q.lng !== p.lng) return; q.city = nm || ""; ls.set(PIN, q); showPin(true); }).catch(() => {});
+}
+function showPin(open) {
+  if (!pinLayer) return; pinLayer.clearLayers(); const p = ls.get(PIN); if (!p) return;
+  const m = L.marker([p.lat, p.lng], { zIndexOffset: 1200, icon: L.divIcon({ className: "", iconSize: [32, 32], iconAnchor: [16, 30], html: '<div class="hpin">📌</div>' }) })
+    .bindPopup(`<div class="pop"><b>📌 ${esc(p.name)}</b>${p.city ? `<div>${esc(p.city)}</div>` : ""}${Geo.last ? Geo.line(Geo.last, p) : ""}<button class="btn" onclick="goPin()">🧭 انطلق إلى هنا</button><button class="btn ghost" style="color:var(--brand)" onclick="delPin()">إزالة النقطة</button></div>`).addTo(pinLayer);
+  if (open) m.openPopup();
+}
+function goPin() { const p = ls.get(PIN); if (p) Geo.guide(p); }
+function delPin() { try { localStorage.removeItem(PIN); } catch {} map.closePopup(); showPin(false); }
 // Bus departures set by the agency: a countdown bar, a list, and an alarm (sound, vibration, notification) 15 and 5
 // minutes before and at the time, while the page is open. A closed page cannot ring, so the times can also go into the
 // phone's calendar, which rings on its own, with no internet.
@@ -730,7 +775,7 @@ async function saveOffline(T) {
     if (!("serviceWorker" in navigator) || !window.caches) return;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw281u6l", "../../vendor/leaflet.css", "../../style.css?v=mw281u6l", "manifest.webmanifest", "manifest-a.webmanifest", "../../icons/map-192.png"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw2hzm10", "../../vendor/leaflet.css", "../../style.css?v=mw2hzm10", "manifest.webmanifest", "manifest-a.webmanifest", "../../icons/map-192.png"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));
