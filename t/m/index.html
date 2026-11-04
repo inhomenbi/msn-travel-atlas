@@ -7,10 +7,14 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0f4c5c">
 <link rel="manifest" id="mf" href="manifest.webmanifest">
+<script>if (/Android/i.test(navigator.userAgent)) document.getElementById("mf").href = "manifest-a.webmanifest";</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="خارطتي">
+<link rel="apple-touch-icon" href="../../icons/map-180.png">
+<link rel="icon" type="image/png" href="../../icons/map-192.png">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw26chqh">
+<link rel="stylesheet" href="../../style.css?v=mw26r8hu">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -66,6 +70,17 @@ body { overflow: auto; }
 .alarm .btn { width: 100%; height: 52px; font-size: 18px; background: #fff; color: #7a1408; }
 .alarm.msg { background: rgba(15, 76, 92, .96); } .alarm.msg .btn { color: var(--brand); }
 .lock input.who { font-size: 15px; letter-spacing: 0; height: 44px; margin-top: 8px; direction: rtl; }
+.homebar { display: flex; align-items: center; gap: 8px; margin: 10px 16px 0; padding: 10px 12px; border-radius: 14px; background: #e8f3f5; border: 1px solid #b9dbe1; }
+.homebar .btn { flex: 1; } .homebar .x { flex: 0 0 auto; background: none; border: 0; font-size: 20px; color: var(--muted); padding: 4px 8px; cursor: pointer; }
+.lock .homebtn { margin-top: 16px; }
+.hsteps { text-align: right; margin: 0 0 14px; padding: 0; list-style: none; counter-reset: s; }
+.hsteps li { counter-increment: s; position: relative; padding: 8px 36px 8px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; line-height: 1.7; color: var(--ink); }
+.hsteps li::before { content: counter(s); position: absolute; right: 0; top: 9px; width: 26px; height: 26px; border-radius: 50%; background: var(--brand); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+.hsteps .k { display: inline-block; padding: 0 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-weight: 600; }
+.harrow { position: fixed; bottom: 6px; left: 50%; transform: translateX(-50%); z-index: 4001; color: #fff; text-align: center; font-size: 13px; animation: hbob 1s ease-in-out infinite alternate; pointer-events: none; }
+.harrow b { display: block; font-size: 34px; line-height: 1; }
+@keyframes hbob { from { transform: translate(-50%, 0); } to { transform: translate(-50%, 10px); } }
+@media (prefers-reduced-motion: reduce) { .harrow { animation: none; } }
 .gate { position: fixed; inset: 0; z-index: 4000; display: grid; place-items: center; padding: 24px; background: rgba(8, 48, 58, .96); }
 .gate .box { background: var(--panel); border-radius: 20px; padding: 26px 22px; width: min(400px, 100%); text-align: center; box-shadow: var(--shadow); }
 .gate h2 { margin: 6px 0; color: var(--brand); font-size: 21px; } .gate p { color: var(--muted); font-size: 14.5px; line-height: 1.9; margin: 0 0 14px; }
@@ -84,11 +99,12 @@ body { overflow: auto; }
     <input id="who" class="who" maxlength="40" autocomplete="name" placeholder="اسمك (اختياري، يشوفه قائد الرحلة)" aria-label="اسمك">
     <button class="btn" type="submit">افتح الخريطة</button></form>
     <div class="msg" id="msg" role="alert"></div>
+    <button class="btn ghost homebtn" id="homeBtnL" type="button" hidden>📲 أضف «خارطتي» للشاشة الرئيسية</button>
   </div>
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw26chqh"></script>
+<script src="../../geo.js?v=mw26r8hu"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -258,6 +274,7 @@ function render(T) {
   $("lock").remove(); const el = $("trip"); el.style.display = "block";
   el.innerHTML = `<header><small>${B.logo ? `<img class="logo" src="${esc(B.logo)}" alt="">` : ""}${esc(B.name)}</small><h1>${esc(T.title)}</h1>
       <div>${T.traveler ? esc(T.traveler) + " · " : ""}<span id="valid"></span></div></header>
+    <div class="homebar" id="homeBar" hidden><button class="btn" id="homeBtn" type="button">📲 أضف «خارطتي» للشاشة الرئيسية</button><button class="x" id="homeX" type="button" aria-label="إخفاء">✕</button></div>
     <div class="busbar" id="busbar"></div>
     <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === first}">اليوم ${i + 1}${d.date ? " · " + esc(dayShort(d.date)) : ""}</button>`).join("")}<button class="chip" data-i="-2" aria-pressed="false">🛎️ خدمات قريبة</button></nav>
     <div id="tmap"></div><div id="day"></div>
@@ -275,6 +292,8 @@ function render(T) {
   L.control.zoom({ position: "topleft" }).addTo(map);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
   layer = L.layerGroup().addTo(map); fixed = L.layerGroup().addTo(map); pts = L.layerGroup().addTo(map);
+  $("homeBtn").addEventListener("click", addHome); showHome();
+  $("homeX").addEventListener("click", () => { try { localStorage.setItem(HOMEOFF, Date.now()); } catch {} showHome(); });
   $("hotelBtn").addEventListener("click", goHotel);
   $("busCal").addEventListener("click", () => busCalendar(T, B));
   $("busOn").addEventListener("click", busAllow);
@@ -497,6 +516,41 @@ async function join(url, code, name) {
 }
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+// "My map" on the home screen with one button. Android (Chrome): the phone's own install prompt. iPhone: Safari has no
+// such button for pages, so the steps are shown, with an arrow to Safari's share button. Opened from its icon, the map
+// runs on its own, without Safari's bars (a page cannot close Safari itself).
+let installEv = null;
+const isAndroid = /Android/i.test(navigator.userAgent);
+const inApp = /FBAN|FBAV|Instagram|Line\/|Snapchat|TikTok|GSA\//i.test(navigator.userAgent) || (isIOS && !/Safari\//.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent));
+const HOMEOFF = "map-home-off";
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEv = e; showHome(); });
+addEventListener("appinstalled", () => { installEv = null; try { localStorage.setItem(HOMEOFF, Date.now()); } catch {} showHome(); });
+function showHome() {
+  const can = !standalone && (installEv || isIOS || isAndroid);
+  const l = $("homeBtnL"); if (l) l.hidden = !can;
+  const bar = $("homeBar"), off = +(localStorage.getItem(HOMEOFF) || 0);
+  if (bar) bar.hidden = !can || Date.now() - off < 7 * 864e5;
+}
+const homeSteps = () => inApp
+  ? `<ol class="hsteps"><li>افتح الرابط في <b>${isIOS ? "Safari" : "Chrome"}</b>: اضغط «نسخ الرابط» تحت، وافتح ${isIOS ? "Safari" : "Chrome"} والصقه.</li><li>بعدها اضغط زر «📲 أضف خارطتي للشاشة الرئيسية» من هناك.</li></ol>
+     <button class="btn" id="hCopy" type="button">📋 نسخ الرابط</button>`
+  : isIOS ? `<ol class="hsteps"><li>اضغط زر المشاركة <span class="k">⬆️</span> تحت في Safari. (لو ما شفته: اضغط <span class="k">•••</span> ثم «مشاركة»)</li>
+      <li>انزل شوي واختر <span class="k">➕ إضافة إلى الشاشة الرئيسية</span>.</li><li>اضغط <span class="k">إضافة</span> فوق. لو طلع لك «فتح كتطبيق ويب» خلّه مفعّل.</li>
+      <li>سكّر Safari وافتح <b>«خارطتي»</b> من أيقونتها: تفتح لحالها بدون Safari مثل التطبيق. أول مرة اكتب الرقم السري مرة وحدة.</li></ol>`
+  : `<ol class="hsteps"><li>اضغط قائمة المتصفح <span class="k">⋮</span> فوق.</li><li>اختر <span class="k">إضافة إلى الشاشة الرئيسية</span> أو <span class="k">تثبيت التطبيق</span>.</li><li>افتح <b>«خارطتي»</b> من أيقونتها في الشاشة الرئيسية.</li></ol>`;
+async function addHome() {
+  if (installEv) { const e = installEv; installEv = null; e.prompt(); try { await e.userChoice; } catch {} showHome(); return; }
+  document.querySelector(".gate.home")?.remove();
+  const el = document.createElement("div"); el.className = "gate home"; el.setAttribute("role", "dialog");
+  el.innerHTML = `<div class="box"><div class="big">📲</div><h2>أضف «خارطتي» للشاشة الرئيسية</h2><p>عشان تفتح خريطتك من أيقونة مثل التطبيق، بدون ما تدوّر على الرابط.</p>${homeSteps()}
+    <button class="btn ghost" id="hClose" type="button" style="margin-top:10px">تم</button><div class="msg" id="hMsg"></div></div>${isIOS && !inApp ? '<div class="harrow">زر المشاركة تحت<b>⬇</b></div>' : ""}`;
+  document.body.append(el);
+  el.querySelector("#hClose").onclick = () => el.remove();
+}
+$("homeBtnL").addEventListener("click", addHome);
+showHome();
+document.addEventListener("click", async e => { if (e.target.id !== "hCopy") return; const m = e.target.parentElement.querySelector(".msg");
+  try { await navigator.clipboard.writeText(location.href); if (m) m.textContent = "انتسخ الرابط ✓"; } catch { prompt("انسخ الرابط:", location.href); } });
 // The notification gate: the map is usable once notifications are allowed, for 15 days, then asks again.
 function gate() {
   document.querySelector(".gate")?.remove();
@@ -506,7 +560,7 @@ function gate() {
   const el = document.createElement("div"); el.className = "gate"; el.setAttribute("role", "dialog");
   const renew = consent ? `<p>انتهت فترة السماح (${CONSENT_DAYS} يوم). جدّد السماح بالتنبيهات لتستمر الخدمة.</p>` : "";
   let inner;
-  if (isIOS && !standalone) inner = `<div class="big">📲</div><h2>أضف الخريطة للشاشة الرئيسية</h2>${renew}<p>عشان توصلك تنبيهات الباص ورسائل قائد الرحلة حتى والجوال مقفل:<br>١. اضغط زر المشاركة <b>⬆️</b> تحت في Safari.<br>٢. اختر <b>«إضافة إلى الشاشة الرئيسية»</b>.<br>٣. افتح الخريطة من أيقونتها في الشاشة الرئيسية واسمح بالتنبيهات.</p>`;
+  if (isIOS && !standalone) inner = `<div class="big">📲</div><h2>أضف «خارطتي» للشاشة الرئيسية</h2>${renew}<p>عشان توصلك تنبيهات الباص ورسائل قائد الرحلة حتى والجوال مقفل، افتح الخريطة من أيقونتها:</p>${homeSteps()}`;
   else if (!("serviceWorker" in navigator) || !("PushManager" in window) || !window.Notification) inner = `<div class="big">🔔</div><h2>المتصفح ما يدعم التنبيهات</h2><p>افتح رابط الخريطة في Chrome (أندرويد) أو Safari (آيفون) عشان تستخدم الخدمة.</p>`;
   else inner = `<div class="big">🔔</div><h2>فعّل التنبيهات</h2>${renew}<p>الخدمة تحتاج السماح بالتنبيهات عشان توصلك مواعيد الباص ورسائل قائد الرحلة حتى والجوال مقفل. السماح صالح ${CONSENT_DAYS} يوم.<br>وبعدها يسألك عن الموقع: يشوف قائد الرحلة آخر موقع لك وقت الرحلة عشان ما يضيع أحد (تقدر توقفه من الخريطة).</p>
     <button class="btn" id="allow">🔔 السماح بالتنبيهات</button>${Notification.permission === "denied" ? '<p style="margin-top:10px">التنبيهات مقفولة لهذه الصفحة: افتح إعدادات المتصفح ← إعدادات الموقع ← الإشعارات ← سماح، ثم اضغط الزر.</p>' : ""}<div class="msg" id="gateMsg"></div>`;
@@ -661,7 +715,7 @@ async function saveOffline(T) {
     if (!("serviceWorker" in navigator) || !window.caches) return;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw26chqh", "../../vendor/leaflet.css", "../../style.css?v=mw26chqh", "manifest.webmanifest"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw26r8hu", "../../vendor/leaflet.css", "../../style.css?v=mw26r8hu", "manifest.webmanifest", "manifest-a.webmanifest", "../../icons/map-192.png"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));

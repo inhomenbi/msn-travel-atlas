@@ -1,1 +1,1 @@
-{"name":"خريطتي - MSN Travel","short_name":"خريطتي","scope":"./","display":"standalone","dir":"rtl","lang":"ar","background_color":"#0f4c5c","theme_color":"#0f4c5c"}
+{"name":"خارطتي - MSN Travel","short_name":"خارطتي","scope":"./","display":"standalone","dir":"rtl","lang":"ar","background_color":"#0f4c5c","theme_color":"#0f4c5c","icons":[{"src":"../../icons/map-192.png","sizes":"192x192","type":"image/png"},{"src":"../../icons/map-512.png","sizes":"512x512","type":"image/png"},{"src":"../../icons/map-mask-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}
