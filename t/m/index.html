@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" href="../../icons/map-192.png">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw26r8hu">
+<link rel="stylesheet" href="../../style.css?v=mw281u6l">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -73,6 +73,9 @@ body { overflow: auto; }
 .homebar { display: flex; align-items: center; gap: 8px; margin: 10px 16px 0; padding: 10px 12px; border-radius: 14px; background: #e8f3f5; border: 1px solid #b9dbe1; }
 .homebar .btn { flex: 1; } .homebar .x { flex: 0 0 auto; background: none; border: 0; font-size: 20px; color: var(--muted); padding: 4px 8px; cursor: pointer; }
 .lock .homebtn { margin-top: 16px; }
+.gate .hicon { width: 84px; height: 84px; border-radius: 20px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.gate .hgo { height: 64px; font-size: 24px; font-weight: 700; margin-top: 8px; border-radius: 16px; }
+.gate .hlater { background: none; border: 0; color: var(--muted); font: inherit; font-size: 14px; margin-top: 12px; padding: 6px 14px; cursor: pointer; text-decoration: underline; }
 .hsteps { text-align: right; margin: 0 0 14px; padding: 0; list-style: none; counter-reset: s; }
 .hsteps li { counter-increment: s; position: relative; padding: 8px 36px 8px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; line-height: 1.7; color: var(--ink); }
 .hsteps li::before { content: counter(s); position: absolute; right: 0; top: 9px; width: 26px; height: 26px; border-radius: 50%; background: var(--brand); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 14px; }
@@ -104,7 +107,7 @@ body { overflow: auto; }
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw26r8hu"></script>
+<script src="../../geo.js?v=mw281u6l"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -538,17 +541,29 @@ const homeSteps = () => inApp
       <li>انزل شوي واختر <span class="k">➕ إضافة إلى الشاشة الرئيسية</span>.</li><li>اضغط <span class="k">إضافة</span> فوق. لو طلع لك «فتح كتطبيق ويب» خلّه مفعّل.</li>
       <li>سكّر Safari وافتح <b>«خارطتي»</b> من أيقونتها: تفتح لحالها بدون Safari مثل التطبيق. أول مرة اكتب الرقم السري مرة وحدة.</li></ol>`
   : `<ol class="hsteps"><li>اضغط قائمة المتصفح <span class="k">⋮</span> فوق.</li><li>اختر <span class="k">إضافة إلى الشاشة الرئيسية</span> أو <span class="k">تثبيت التطبيق</span>.</li><li>افتح <b>«خارطتي»</b> من أيقونتها في الشاشة الرئيسية.</li></ol>`;
-async function addHome() {
-  if (installEv) { const e = installEv; installEv = null; e.prompt(); try { await e.userChoice; } catch {} showHome(); return; }
+// The page: its title and one button «خارطتي». Android: the button opens the phone's install prompt (one more tap on
+// «تثبيت»). iPhone: Apple lets only the traveler add a page, from Safari's share button, so the button shows those steps.
+function addHome() {
   document.querySelector(".gate.home")?.remove();
   const el = document.createElement("div"); el.className = "gate home"; el.setAttribute("role", "dialog");
-  el.innerHTML = `<div class="box"><div class="big">📲</div><h2>أضف «خارطتي» للشاشة الرئيسية</h2><p>عشان تفتح خريطتك من أيقونة مثل التطبيق، بدون ما تدوّر على الرابط.</p>${homeSteps()}
-    <button class="btn ghost" id="hClose" type="button" style="margin-top:10px">تم</button><div class="msg" id="hMsg"></div></div>${isIOS && !inApp ? '<div class="harrow">زر المشاركة تحت<b>⬇</b></div>' : ""}`;
+  el.innerHTML = `<div class="box"><img class="hicon" src="../../icons/map-192.png" alt=""><h2>أضف «خارطتي» للشاشة الرئيسية</h2>
+    <button class="btn hgo" id="hGo" type="button">خارطتي</button><div id="hHow"></div><div class="msg" id="hMsg"></div>
+    <button class="hlater" id="hClose" type="button">لاحقاً</button></div>`;
   document.body.append(el);
-  el.querySelector("#hClose").onclick = () => el.remove();
+  const close = () => { el.remove(); try { localStorage.setItem(HOMEOFF, Date.now()); } catch {} showHome(); };
+  el.querySelector("#hClose").onclick = close;
+  el.querySelector("#hGo").onclick = async () => {
+    if (installEv) { const e = installEv; installEv = null; e.prompt(); let ok = false; try { ok = (await e.userChoice).outcome === "accepted"; } catch {}
+      if (ok) { el.querySelector(".box").innerHTML = `<img class="hicon" src="../../icons/map-192.png" alt=""><h2>تمت إضافة «خارطتي» ✓</h2><p>افتحها من أيقونتها في الشاشة الرئيسية. تقدر تسكّر المتصفح.</p><button class="btn" id="hOk" type="button">تم</button>`; el.querySelector("#hOk").onclick = close; }
+      return; }
+    $("hHow").innerHTML = homeSteps(); el.querySelector("#hGo").hidden = true;
+    if (isIOS && !inApp) el.insertAdjacentHTML("beforeend", '<div class="harrow">زر المشاركة تحت<b>⬇</b></div>');
+  };
 }
 $("homeBtnL").addEventListener("click", addHome);
 showHome();
+// Opened in the browser on a phone (not from the icon): the page shows once by itself; later from the button.
+if (!standalone && (isIOS || isAndroid) && !localStorage.getItem(HOMEOFF)) setTimeout(() => { if (!document.querySelector(".gate")) addHome(); }, installEv || isIOS ? 600 : 2500);
 document.addEventListener("click", async e => { if (e.target.id !== "hCopy") return; const m = e.target.parentElement.querySelector(".msg");
   try { await navigator.clipboard.writeText(location.href); if (m) m.textContent = "انتسخ الرابط ✓"; } catch { prompt("انسخ الرابط:", location.href); } });
 // The notification gate: the map is usable once notifications are allowed, for 15 days, then asks again.
@@ -715,7 +730,7 @@ async function saveOffline(T) {
     if (!("serviceWorker" in navigator) || !window.caches) return;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw26r8hu", "../../vendor/leaflet.css", "../../style.css?v=mw26r8hu", "manifest.webmanifest", "manifest-a.webmanifest", "../../icons/map-192.png"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw281u6l", "../../vendor/leaflet.css", "../../style.css?v=mw281u6l", "manifest.webmanifest", "manifest-a.webmanifest", "../../icons/map-192.png"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));
