@@ -9,7 +9,8 @@
 <link rel="manifest" id="mf" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../style.css?v=mw17ktwl">
+<link rel="stylesheet" href="../vendor/leaflet.css">
+<link rel="stylesheet" href="../style.css?v=mw1vpf1o">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -25,11 +26,24 @@ textarea, input, select { width: 100%; border: 1px solid var(--line); border-rad
 textarea { min-height: 80px; resize: vertical; } .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; } .row > * { flex: 1; min-width: 120px; }
 .row .btn { flex: none; } .btn.wide { width: 100%; margin-top: 8px; height: 46px; }
 .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .quick .chip { font-size: 13.5px; }
-.list { list-style: none; margin: 0; padding: 0; } .list li { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
-.list li > div { flex: 1; min-width: 0; } .list small { display: block; color: var(--muted); font-size: 12px; }
-.list .btn { height: 32px; padding: 0 8px; font-size: 12.5px; } .list li { flex-wrap: wrap; } .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.tag.on { background: #e7f4ea; color: var(--ok); } .tag.off { background: #fde8e6; color: var(--warn); }
 .ok { color: var(--ok); font-size: 14px; min-height: 20px; margin-top: 6px; }
+#lmap { height: 52vh; min-height: 300px; border-radius: 12px; }
+.edit { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,.25); color: #0f4c5c; }
+.edit.on { background: #0f4c5c; color: #fff; }
+.pin { font-size: 26px; line-height: 32px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+.me { width: 14px; height: 14px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3); }
+.pop { text-align: right; min-width: 170px; } .pop img { width: 100%; max-height: 140px; object-fit: cover; border-radius: 8px; display: block; margin-bottom: 6px; }
+.pop .btn { height: 32px; margin-top: 6px; width: 100%; font-size: 13px; }
+.leaflet-tooltip.who { background: rgba(15,76,92,.92); color: #fff; border: 0; font-size: 12px; padding: 1px 6px; box-shadow: none; } .leaflet-tooltip.who::before { display: none; }
+#ptForm { margin-top: 10px; border: 2px solid #0f4c5c; border-radius: 12px; padding: 10px 12px; } #ptForm h3 { margin: 0 0 4px; font-size: 15px; }
+#ptImg { max-height: 120px; border-radius: 8px; margin-top: 8px; display: block; }
+.trav { list-style: none; margin: 0; padding: 0; }
+.trav li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+.trav small { display: block; color: var(--muted); font-size: 12px; } .trav .off { color: var(--warn); }
+.trav .acts { display: flex; flex-direction: column; gap: 4px; } .trav .acts .btn { height: 32px; padding: 0 10px; font-size: 12.5px; min-width: 104px; }
+.trav .pm { grid-column: 1 / -1; display: flex; gap: 6px; } .trav .pm input { height: 36px; padding: 0 10px; font-size: 13.5px; } .trav .pm .btn { height: 36px; flex: none; padding: 0 12px; font-size: 13px; }
+.linkbtn { background: none; border: 0; padding: 0; color: #1a73e8; font: inherit; font-size: 12.5px; cursor: pointer; }
+.list { list-style: none; margin: 0; padding: 0; } .list li { padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; } .list small { display: block; color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -38,28 +52,35 @@ textarea { min-height: 80px; resize: vertical; } .row { display: flex; gap: 8px;
   <div class="msg" id="msg" role="alert"></div></div></section>
 <main class="app" id="app">
   <header><small>قائد الرحلة</small><h1 id="title"></h1><div id="count"></div></header>
+  <section class="card"><h2>🗺️ الخريطة</h2>
+    <p class="note" style="margin:0 0 8px">النقاط الزرقاء: آخر موقع لكل مسافر. 📍 أماكنك اللي تظهر للمسافرين. لإضافة مكان: اضغط <b>✏️ إضافة مكان</b> في زاوية الخريطة، ثم اضغط على المكان في الخريطة.</p>
+    <div id="lmap"></div>
+    <div id="ptForm" hidden><h3>📍 مكان جديد للمسافرين</h3>
+      <p class="note" style="margin:0">تقدر تسحب الدبوس أو تضغط مكان ثاني في الخريطة لتعديل الموقع.</p>
+      <div class="row"><input id="ptName" maxlength="80" placeholder="اسم المكان (مثال: بوابة 3 في المجمع)"></div>
+      <div class="row"><input id="ptNote" maxlength="200" placeholder="ملاحظة (اختياري، مثال: نتجمع هنا الساعة 5)"></div>
+      <div class="row"><label class="btn ghost" style="margin:0">📷 صورة (اختياري)<input type="file" id="ptFile" accept="image/*" hidden></label><button class="btn ghost" id="ptMe" type="button">📍 موقعي الحين</button></div>
+      <img id="ptImg" alt="" hidden>
+      <div class="row"><button class="btn" id="ptSend" style="flex:1">حفظ وإرسال للمسافرين</button><button class="btn ghost" id="ptCancel" type="button">إلغاء</button></div>
+      <div class="ok" id="ptOk"></div></div></section>
   <section class="card"><h2>🚌 تنبيه الباص</h2>
     <p class="note" style="margin:0">يوصل التنبيه لكل المسافرين حتى والجوال مقفل، ويذكّرهم قبل الموعد بـ 15 و 5 دقائق ووقت التحرك.</p>
     <div class="quick" id="quick"><button class="chip" data-min="10">بعد 10 دقائق</button><button class="chip" data-min="15">بعد 15 دقيقة</button><button class="chip" data-min="30">بعد 30 دقيقة</button><button class="chip" data-min="60">بعد ساعة</button></div>
     <div class="row"><input id="busAt" type="datetime-local" dir="ltr" aria-label="وقت التحرك"><input id="busPlace" placeholder="مكان التجمع (مثال: بوابة المتحف)"></div>
     <button class="btn wide" id="busSend">أرسل تنبيه الباص</button><div class="ok" id="busOk"></div></section>
-  <section class="card"><h2>📍 نقطة التقاء أو مكان مفيد</h2>
-    <p class="note" style="margin:0">يظهر على خريطة كل المسافرين مع زر «انطلق» يوصلهم له، ويوصلهم تنبيه. مثال: بوابة المجمع، مطعم الغداء، مكتب الصرافة.</p>
-    <div class="row"><input id="ptName" maxlength="80" placeholder="اسم المكان (مثال: بوابة 3 في المجمع)"></div>
-    <div class="row"><input id="ptAt" dir="ltr" placeholder="الإحداثيات أو رابط جوجل ماب"><button class="btn ghost" id="ptMe" type="button">📍 موقعي الحين</button></div>
-    <div class="row"><input id="ptNote" maxlength="200" placeholder="ملاحظة (اختياري، مثال: نتجمع الساعة 5)"></div>
-    <button class="btn wide" id="ptSend">أرسل المكان للمسافرين</button><div class="ok" id="ptOk"></div></section>
   <section class="card"><h2>📣 رسالة للمجموعة</h2>
     <textarea id="text" maxlength="500" placeholder="مثال: الغداء الساعة 1:30 في المطعم المقابل للفندق"></textarea>
     <button class="btn wide" id="send">إرسال للكل</button><div class="ok" id="sendOk"></div></section>
-  <section class="card"><h2>👥 المسافرون</h2><div class="note" id="codes"></div><ul class="list" id="devs"></ul>
-    <p class="note">«بدون تنبيهات» يعني المسافر ما سمح بالتنبيهات بعد، فما يوصله شي والجوال مقفل. «كتم» يوقف التنبيهات عن جوال معيّن (مثلاً عائلة ما بتلتحق بجولة اليوم) والباقين يوصلهم عادي. «إيقاف» يقفل الخريطة على ذاك الجوال ويفضّي مكانه.</p></section>
+  <section class="card"><h2>👥 المسافرون</h2><div class="note" id="codes"></div><ul class="trav" id="devs"></ul>
+    <p class="note">«كتم 24 ساعة» يوقف التنبيهات عن جوال معيّن (مثلاً عائلة ما بتلتحق بجولة اليوم) والباقين يوصلهم عادي. «إيقاف» يقفل الخريطة على ذاك الجوال ويفضّي مكانه. «⚠️ بدون تنبيهات» يعني المسافر ما سمح بالتنبيهات بعد.</p></section>
   <section class="card"><h2>🕘 آخر الرسائل</h2><ul class="list" id="msgs"></ul></section>
   <p class="note" style="text-align:center"><button class="chip" id="out">خروج</button></p>
 </main>
+<script src="../vendor/leaflet.js"></script>
 <script>
-// Trip leader page lead/#<map id> (older links: lead/#<map id>~<server address>): the leader code (only its hash is on the server) unlocks the list of
-// phones on the map, messages to the group and bus alerts, which the server pushes to the phones even when locked.
+// Trip leader page lead/#<map id> (older links: lead/#<map id>~<server address>): the leader code (only its hash is on the
+// server) unlocks a map with the travelers' last positions and the leader's places (added with "✏️ إضافة مكان": a tap on
+// the map, a name, a photo, a note), bus alerts, messages to the group or to one traveler, and mute / stop per phone.
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 // What follows # (map id, and on older links ~server). A home-screen icon may open the page without it: the last one is remembered.
@@ -78,39 +99,120 @@ async function api(path, body) {
 }
 if (!ID || !/^https?:\/\//.test(SRV)) askLink();
 else { if (PIN) login(true); $("form").addEventListener("submit", e => { e.preventDefault(); PIN = $("pin").value.trim(); login(false); }); }
-// No link after # (a home-screen icon can open the page without it): the traveler pastes the link from the agency's message.
+// No link after # (a home-screen icon can open the page without it): the leader pastes the link from the agency's message.
 function askLink() {
   $("lockText").textContent = "الصق رابط صفحة القائد اللي أرسلته لك الوكالة (من رسالة الواتساب) واضغط «فتح». بعدها يفتح من الأيقونة على طول.";
   const i = $("pin"); i.value = ""; i.removeAttribute("maxlength"); i.inputMode = "url"; i.placeholder = "الصق الرابط هنا"; i.dir = "ltr";
   i.style.cssText = "font-size:14px;letter-spacing:0;text-align:left"; i.setAttribute("aria-label", "رابط صفحة القائد");
-  for (const x of document.querySelectorAll("#form .who")) x.remove();
   $("form").querySelector("button").textContent = "فتح";
   $("form").addEventListener("submit", e => { e.preventDefault(); const m = i.value.trim().match(/#([^\s#]+)/);
-    if (!m) { $("msg").textContent = "هذا موب رابط الخريطة. انسخ الرابط كاملاً من رسالة الوكالة."; return; }
+    if (!m) { $("msg").textContent = "هذا موب رابط صفحة القائد. انسخ الرابط كاملاً من رسالة الوكالة."; return; }
     location.hash = m[1]; location.reload(); });
 }
 async function login(silent) {
   $("msg").textContent = silent ? "" : "جارٍ الدخول…";
   try { const j = await api("/lead/check", {}); try { localStorage.setItem(KEY, PIN); } catch {}
-    $("lock").remove(); $("app").style.display = "block"; $("title").textContent = j.title; document.title = j.title + " | قائد الرحلة"; load(); setInterval(load, 30000);
+    $("lock").remove(); $("app").style.display = "block"; $("title").textContent = j.title; document.title = j.title + " | قائد الرحلة";
+    initMap(); load(); setInterval(load, 30000);
   } catch (e) { $("msg").textContent = e === "lead" ? "رمز القائد غير صحيح." : "تعذر الاتصال. تأكد من الإنترنت وحاول مرة ثانية."; if (e === "lead") try { localStorage.removeItem(KEY); } catch {} }
 }
+
+// ---- Map: travelers (blue dots, last position) and the leader's places (📍) ----
+let map, travLayer, ptLayer, draft = null, editing = false, fitted = false, DATA = null;
+function initMap() {
+  map = L.map("lmap", { zoomControl: false }).setView([26.2, 50.55], 11);
+  L.control.zoom({ position: "topleft" }).addTo(map);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
+  travLayer = L.layerGroup().addTo(map); ptLayer = L.layerGroup().addTo(map);
+  const Edit = L.Control.extend({ options: { position: "topright" }, onAdd: () => {
+    const b = L.DomUtil.create("button", "edit"); b.id = "editBtn"; b.type = "button"; b.textContent = "✏️ إضافة مكان";
+    L.DomEvent.on(b, "click", e => { L.DomEvent.stop(e); setEdit(!editing); }); return b; } });
+  map.addControl(new Edit());
+  map.on("click", e => { if (editing) placeDraft(e.latlng); });
+}
+function setEdit(on) {
+  editing = on; $("editBtn").classList.toggle("on", on); $("editBtn").textContent = on ? "اضغط على المكان في الخريطة…" : "✏️ إضافة مكان";
+  $("lmap").style.cursor = on ? "crosshair" : "";
+  if (!on && !draft) $("ptForm").hidden = true;
+}
+function placeDraft(ll) {
+  if (!draft) { draft = L.marker(ll, { draggable: true, zIndexOffset: 2000, icon: L.divIcon({ className: "", iconSize: [32, 32], iconAnchor: [16, 30], html: '<div class="pin">📌</div>' }) }).addTo(map); }
+  else draft.setLatLng(ll);
+  $("ptForm").hidden = false; editing = true; $("editBtn").textContent = "اضغط لتغيير المكان…";
+  setTimeout(() => $("ptName").focus(), 50);
+}
+function cancelDraft() { if (draft) draft.remove(); draft = null; img = ""; $("ptImg").hidden = true; $("ptName").value = $("ptNote").value = ""; $("ptForm").hidden = true; setEdit(false); }
+$("ptCancel").addEventListener("click", cancelDraft);
+$("ptMe").addEventListener("click", () => {
+  if (!navigator.geolocation) return done("ptOk", "الجوال ما يدعم تحديد الموقع.");
+  done("ptOk", "جارٍ تحديد موقعك…");
+  navigator.geolocation.getCurrentPosition(p => { const ll = L.latLng(p.coords.latitude, p.coords.longitude); placeDraft(ll); map.setView(ll, 17); done("ptOk", "✓ الدبوس على موقعك الحالي."); },
+    () => done("ptOk", "ما قدرنا نحدد موقعك. اسمح بالموقع، أو اضغط على المكان في الخريطة."), { enableHighAccuracy: true, timeout: 15000 });
+});
+// The photo is made small (longest side 800 px, JPEG) before it is sent.
+let img = "";
+$("ptFile").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return; const im = new Image();
+  im.onload = () => { const k = Math.min(1, 800 / Math.max(im.width, im.height)), c = document.createElement("canvas");
+    c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+    img = c.toDataURL("image/jpeg", 0.72); $("ptImg").src = img; $("ptImg").hidden = false; URL.revokeObjectURL(im.src); };
+  im.onerror = () => done("ptOk", "تعذر قراءة الصورة."); im.src = URL.createObjectURL(f); e.target.value = "";
+});
+$("ptSend").addEventListener("click", async () => {
+  if (!draft) return done("ptOk", "اضغط على المكان في الخريطة أول.");
+  const ll = draft.getLatLng(); $("ptSend").disabled = true; done("ptOk", "جارٍ الإرسال…");
+  try { await api("/lead/point", { name: $("ptName").value.trim(), note: $("ptNote").value.trim(), lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6), img });
+    cancelDraft(); done("ptOk", "✓ المكان ظهر للمسافرين."); load(); }
+  catch (e) { done("ptOk", e === "big" ? "الصورة كبيرة. اختر صورة ثانية." : "تعذر الإرسال. تأكد من الإنترنت."); }
+  $("ptSend").disabled = false;
+});
+document.addEventListener("click", async e => { const b = e.target.closest("[data-delpt]"); if (!b) return;
+  if (!confirm("حذف هذا المكان من خريطة المسافرين؟")) return;
+  try { await api("/lead/delpoint", { id: +b.dataset.delpt }); map.closePopup(); load(); } catch { alert("تعذر الحذف."); } });
+function drawMap(j) {
+  travLayer.clearLayers(); ptLayer.clearLayers(); const pts = [];
+  for (const d of j.devices) if (d.lat != null) {
+    pts.push([d.lat, d.lng]);
+    L.marker([d.lat, d.lng], { icon: L.divIcon({ className: "", iconSize: [20, 20], html: '<div class="me"></div>' }) })
+      .bindTooltip(esc(d.name || "مسافر"), { permanent: true, direction: "top", className: "who", offset: [0, -8] })
+      .bindPopup(`<div class="pop"><b>${esc(d.name || "مسافر")}</b><div>آخر موقع ${esc(ago(d.locat))}</div></div>`).addTo(travLayer);
+  }
+  for (const p of j.points) {
+    pts.push([p.lat, p.lng]);
+    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", iconSize: [32, 32], iconAnchor: [16, 30], html: '<div class="pin">📍</div>' }) })
+      .bindPopup(`<div class="pop">${p.img ? `<img src="${esc(SRV)}/img?id=${esc(p.img)}" alt="">` : ""}<b>${esc(p.place || "مكان")}</b>${p.note ? `<div>${esc(p.note)}</div>` : ""}
+        <div class="note">${esc(when(p.at))}</div><button class="btn ghost" data-delpt="${p.id}">🗑️ حذف من خريطة المسافرين</button></div>`).addTo(ptLayer);
+  }
+  if (!fitted && pts.length) { fitted = true; map.fitBounds(L.latLngBounds(pts).pad(0.2), { maxZoom: 15 }); }
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-locate]"); if (!b || !DATA) return; const d = DATA.devices.find(x => x.k === b.dataset.locate);
+  if (d && d.lat != null) { $("lmap").scrollIntoView({ behavior: "smooth", block: "center" }); map.setView([d.lat, d.lng], 16); } });
+
+// ---- Lists ----
+const drafts = {}; // private messages being typed survive the refresh
 async function load() {
   if (document.hidden) return;
   let j; try { j = await api("/lead/devices"); } catch { return; }
+  DATA = j; drawMap(j);
   const by = {}; for (const d of j.devices) (by[d.h] ||= []).push(d);
   const live = j.codes.filter(c => !c.off && c.e > Date.now());
   $("count").textContent = `${j.devices.length} جوال · ${j.devices.filter(d => d.push).length} فعّلوا التنبيهات`;
   $("codes").innerHTML = live.map(c => `رقم سري ${esc(c.h)}…: ${(by[c.h] || []).length} من ${c.n} جوال`).join("<br>");
-  $("devs").innerHTML = j.devices.map(d => `<li><div>${esc(d.name || "بدون اسم")}<small>دخل ${esc(ago(d.at))} · آخر ظهور ${esc(ago(d.seen))}</small></div>
-    <span class="tag ${d.push ? "on" : "off"}">${d.push ? "🔔 تنبيهات" : "بدون تنبيهات"}</span>${d.mute > Date.now() ? `<button class="btn ghost" data-mute="${esc(d.k)}" data-until="0" title="مكتوم حتى ${esc(when(d.mute))}">🔔 إلغاء الكتم</button>`
-      : `<button class="btn ghost" data-mute="${esc(d.k)}" data-until="day">🔕 كتم اليوم</button><button class="btn ghost" data-mute="${esc(d.k)}" data-until="all">🔕 دائماً</button>`}<button class="btn ghost" data-kick="${esc(d.k)}">إيقاف</button></li>`).join("") || '<li class="note">ما دخل أحد بعد.</li>';
-  $("msgs").innerHTML = j.msgs.slice().reverse().map(m => `<li><div>${esc(m.text)}<small>${esc(when(m.at))}${m.who === "lead" ? " · أنت" : m.who === "agency" ? " · الوكالة" : ""}</small></div></li>`).join("") || '<li class="note">لا توجد رسائل بعد.</li>';
+  if (!$("devs").contains(document.activeElement)) {
+    for (const i of document.querySelectorAll("[data-pm]")) drafts[i.dataset.pm] = i.value;
+    $("devs").innerHTML = j.devices.map(d => { const muted = d.mute > Date.now();
+      return `<li><div><b>${esc(d.name || "بدون اسم")}</b><small>دخل ${esc(ago(d.at))} · آخر ظهور ${esc(ago(d.seen))}${d.push ? "" : ' · <span class="off">⚠️ بدون تنبيهات</span>'}${muted ? " · 🔕 مكتوم حتى " + esc(when(d.mute)) : ""}</small>
+        ${d.lat != null ? `<button class="linkbtn" data-locate="${esc(d.k)}">📍 آخر موقع (${esc(ago(d.locat))})</button>` : ""}</div>
+        <div class="acts"><button class="btn ghost" data-kick="${esc(d.k)}">إيقاف</button>${muted ? `<button class="btn ghost" data-mute="${esc(d.k)}" data-until="0">🔔 إلغاء الكتم</button>` : `<button class="btn ghost" data-mute="${esc(d.k)}" data-until="24">🔕 كتم 24 ساعة</button>`}</div>
+        <div class="pm"><input data-pm="${esc(d.k)}" maxlength="500" placeholder="رسالة خاصة لـ ${esc(d.name || "هذا المسافر")}" value="${esc(drafts[d.k] || "")}"><button class="btn" data-pmsend="${esc(d.k)}">إرسال</button></div></li>`; }).join("") || '<li class="note">ما دخل أحد بعد.</li>';
+  }
+  const names = {}; for (const d of j.devices) names[d.k] = d.name || "مسافر";
+  $("msgs").innerHTML = j.msgs.slice().reverse().map(m => `<li>${esc(m.text)}<small>${esc(when(m.at))}${m.who === "lead" ? " · أنت" : m.who === "agency" ? " · الوكالة" : ""}${m.to ? " · خاصة لـ " + esc(names[m.to] || "مسافر") : ""}</small></li>`).join("") || '<li class="note">لا توجد رسائل بعد.</li>';
 }
 const localInput = t => new Date(t - new Date(t).getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
 $("busAt").value = localInput(Date.now() + 30 * 6e4);
 $("quick").addEventListener("click", e => { const b = e.target.closest("[data-min]"); if (b) $("busAt").value = localInput(Date.now() + b.dataset.min * 6e4); });
-const done = (el, t) => { $(el).textContent = t; setTimeout(() => { $(el).textContent = ""; }, 4000); };
+const done = (el, t) => { $(el).textContent = t; clearTimeout(done[el]); done[el] = setTimeout(() => { $(el).textContent = ""; }, 5000); };
 $("busSend").addEventListener("click", async () => {
   const t = new Date($("busAt").value).getTime(); if (!(t > Date.now())) return done("busOk", "اختر وقتاً قادماً.");
   $("busSend").disabled = true;
@@ -123,30 +225,16 @@ $("send").addEventListener("click", async () => {
   try { await api("/lead/msg", { text }); $("text").value = ""; done("sendOk", "✓ أُرسلت لكل المسافرين"); load(); } catch { done("sendOk", "تعذر الإرسال. تأكد من الإنترنت."); }
   $("send").disabled = false;
 });
-// Mute one phone: for the rest of today (the leader's day) or until turned back on.
-document.addEventListener("click", async e => { const b = e.target.closest("[data-mute]"); if (!b) return;
-  const u = b.dataset.until, d = new Date(); d.setHours(24, 0, 0, 0);
-  const until = u === "day" ? d.getTime() : u === "all" ? Date.now() + 3650 * 864e5 : 0;
-  b.disabled = true; try { await api("/lead/mute", { k: b.dataset.mute, until }); load(); } catch { alert("تعذر التغيير. تأكد من الإنترنت."); b.disabled = false; } });
-// Meeting point: coordinates typed or from a Google Maps link (@lat,lng or ?q=lat,lng), or the leader's own position.
-const parseAt = t => { const m = String(t).match(/(-?\d{1,2}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)/); return m && Math.abs(m[1]) <= 90 && Math.abs(m[2]) <= 180 ? { lat: +m[1], lng: +m[2] } : null; };
-$("ptMe").addEventListener("click", () => {
-  if (!navigator.geolocation) return done("ptOk", "الجوال ما يدعم تحديد الموقع.");
-  done("ptOk", "جارٍ تحديد موقعك…");
-  navigator.geolocation.getCurrentPosition(p => { $("ptAt").value = p.coords.latitude.toFixed(6) + ", " + p.coords.longitude.toFixed(6); done("ptOk", "✓ أخذنا موقعك الحالي."); },
-    () => done("ptOk", "ما قدرنا نحدد موقعك. اسمح بالموقع أو الصق الإحداثيات."), { enableHighAccuracy: true, timeout: 15000 });
+// One traveler: mute for 24 hours (or back on), stop the map on that phone, or a private message.
+document.addEventListener("click", async e => {
+  const m = e.target.closest("[data-mute]"), k = e.target.closest("[data-kick]"), s = e.target.closest("[data-pmsend]");
+  if (m) { m.disabled = true; try { await api("/lead/mute", { k: m.dataset.mute, until: m.dataset.until === "24" ? Date.now() + 864e5 : 0 }); load(); } catch { alert("تعذر التغيير. تأكد من الإنترنت."); m.disabled = false; } }
+  if (k && confirm("إيقاف الخريطة على هذا الجوال؟ يقدر يدخل مرة ثانية بالرقم السري إذا فيه مكان.")) { try { await api("/lead/kick", { k: k.dataset.kick }); load(); } catch { alert("تعذر الإيقاف."); } }
+  if (s) { const i = document.querySelector(`[data-pm="${CSS.escape(s.dataset.pmsend)}"]`), text = i.value.trim(); if (!text) return i.focus();
+    s.disabled = true; try { await api("/lead/msg", { text, to: s.dataset.pmsend }); i.value = ""; drafts[s.dataset.pmsend] = ""; s.textContent = "✓"; setTimeout(() => { s.textContent = "إرسال"; }, 2000); load(); }
+    catch { alert("تعذر الإرسال. تأكد من الإنترنت."); } s.disabled = false; }
 });
-$("ptSend").addEventListener("click", async () => {
-  const p = parseAt($("ptAt").value); if (!p) return done("ptOk", "حدد المكان: اضغط «📍 موقعي الحين» أو الصق الإحداثيات.");
-  $("ptSend").disabled = true;
-  try { await api("/lead/point", { name: $("ptName").value.trim(), note: $("ptNote").value.trim(), ...p }); $("ptName").value = $("ptNote").value = $("ptAt").value = ""; done("ptOk", "✓ وصل المكان للمسافرين."); load(); }
-  catch { done("ptOk", "تعذر الإرسال. تأكد من الإنترنت."); }
-  $("ptSend").disabled = false;
-});
-document.addEventListener("click", async e => { const b = e.target.closest("[data-kick]"); if (!b) return;
-  if (!confirm("إيقاف الخريطة على هذا الجوال؟ يقدر يدخل مرة ثانية بالرقم السري إذا فيه مكان.")) return;
-  try { await api("/lead/kick", { k: b.dataset.kick }); load(); } catch { alert("تعذر الإيقاف."); } });
-$("out") && $("out").addEventListener("click", () => { try { localStorage.removeItem(KEY); } catch {} location.reload(); });
+$("out").addEventListener("click", () => { try { localStorage.removeItem(KEY); } catch {} location.reload(); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && $("app").style.display) load(); });
 </script>
 </body>

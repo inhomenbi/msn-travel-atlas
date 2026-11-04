@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../vendor/leaflet.css">
-<link rel="stylesheet" href="../../style.css?v=mw17ktwl">
+<link rel="stylesheet" href="../../style.css?v=mw1vpf1o">
 <style>
 body { overflow: auto; }
 .lock { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--brand), #08303a); }
@@ -71,6 +71,7 @@ body { overflow: auto; }
 .gate h2 { margin: 6px 0; color: var(--brand); font-size: 21px; } .gate p { color: var(--muted); font-size: 14.5px; line-height: 1.9; margin: 0 0 14px; }
 .gate .btn { width: 100%; height: 50px; font-size: 16px; } .gate .big { font-size: 48px; } .gate .msg { color: var(--warn); font-size: 14px; min-height: 20px; margin-top: 8px; }
 .msglist { margin: 0 0 6px; padding: 0; list-style: none; } .msglist li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; line-height: 1.7; }
+.wx:empty { display: none; } .wx { font-weight: 600; color: var(--ink) !important; }
 .msglist small { color: var(--muted); display: block; font-size: 12px; }
 </style>
 </head>
@@ -87,7 +88,7 @@ body { overflow: auto; }
 </section>
 <main class="trip" id="trip"></main>
 <script src="../../vendor/leaflet.js"></script>
-<script src="../../geo.js?v=mw17ktwl"></script>
+<script src="../../geo.js?v=mw1vpf1o"></script>
 <script>
 // Map page t/m/#<id>. The map's settings and secret codes live in k/<id>.json, written by the agency's settings file:
 // the settings are sealed (AES-GCM) with a data key, and each code slot holds that key plus the code's expiry time,
@@ -177,7 +178,7 @@ async function unlock(code, silent) {
     const daysSeen = JSON.stringify(raw.days || []), T = await expand(raw);
     store.set(code); T.until = slot.e;
     render(T); watchExpiry(code, slot.e, F.v, daysSeen);
-    if (S) { inbox(); setInterval(inbox, 30000); gate(); }
+    if (S) { inbox(); setInterval(inbox, 30000); gate(); showShare(); locTick(); setInterval(locTick, 12e4); }
   } catch (e) {
     store.del();
     $("msg").textContent = MSG[e] || MSG.code;
@@ -238,16 +239,11 @@ function render(T) {
     <nav class="days" id="days">${T.area.length ? `<button class="chip" data-i="-1" aria-pressed="${!T.days.length}">🗺️ خريطة المنطقة</button>` : ""}${T.days.map((d, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === first}">اليوم ${i + 1}${d.date ? " · " + esc(dayShort(d.date)) : ""}</button>`).join("")}<button class="chip" data-i="-2" aria-pressed="false">🛎️ خدمات قريبة</button></nav>
     <div id="tmap"></div><div id="day"></div>
     <section class="apps" id="msgCard" hidden><h2>📣 رسائل الرحلة</h2><ul class="msglist" id="msgList"></ul>
-      <div class="row"><button class="btn ghost" id="muteBtn">🔕 ما بلتحق اليوم: كتم التنبيهات لليوم</button></div><p class="offline-note" id="muteNote" style="padding:8px 0 0"></p></section>
+      <div class="row"><button class="btn ghost" id="shareBtn"></button></div><div class="row" style="margin-top:8px"><button class="btn ghost" id="muteBtn">🔕 ما بلتحق اليوم: كتم التنبيهات لليوم</button></div><p class="offline-note" id="muteNote" style="padding:8px 0 0"></p></section>
     <section class="apps" id="busCard" hidden><h2>🚌 مواعيد الباص</h2><ul class="buslist" id="busList"></ul>
       <p>الخريطة ترن قبل موعد الباص بـ 15 و 5 دقائق وهي مفتوحة. ولو قفلت الشاشة أو ما عندك إنترنت، أضف المواعيد لتقويم جوالك فيرن لك التقويم في وقتها.</p>
       <div class="row"><button class="btn" id="busCal">📅 أضف المواعيد لتقويم جوالي</button><button class="btn ghost" id="busOn">🔔 فعّل صوت التنبيه</button></div>
       <p class="offline-note" id="busNote" style="padding:8px 0 0"></p></section>
-    <section class="apps"><h2>بدون إنترنت</h2>
-      <p>للملاحة والـ GPS بدون نت: ثبّت تطبيق <b>maps.me</b> أو <b>Organic Maps</b> وحمّل فيه خريطة الدولة، ثم اضغط الزر تحت وافتح الملف بالتطبيق، فتنضاف محطات رحلتك وكل أماكن المنطقة للمفضلة وتقدر توصل لها خطوة بخطوة بدون إنترنت.</p>
-      <div class="row"><button class="btn" id="kml">🗺️ محطات الرحلة والمنطقة لتطبيق الخرائط</button>
-      <button class="btn ghost" id="save">حفظ هذه الصفحة بدون إنترنت</button></div></section>
-    <p class="offline-note" id="off"></p>
     <div class="dock">${T.phone ? `<a class="btn" href="https://wa.me/${esc(T.phone.replace(/\D/g, ""))}" target="_blank" rel="noopener">💬 واتساب</a>` : ""}
       <button class="btn ghost" id="hotelBtn" hidden>🏨 الفندق</button>
       <button class="btn ghost" id="locBtn">📍 موقعي</button>
@@ -262,14 +258,6 @@ function render(T) {
   $("days").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (!b) return;
     for (const x of $("days").children) x.setAttribute("aria-pressed", x === b);
     const i = +b.dataset.i; i === -2 ? showServices() : i < 0 ? showArea(T) : showDay(T, i); });
-  $("save").addEventListener("click", () => saveOffline(T));
-  // All trip stops as bookmarks for maps.me / Organic Maps, one colour per day.
-  const COLORS = ["red", "blue", "green", "purple", "orange", "pink", "brown", "yellow"];
-  $("kml").addEventListener("click", () => Geo.download("رحلة " + T.title, Geo.kml(B.name + " - " + T.title, T.days.flatMap((d, i) => d.sites.map((s, n) => ({
-    name: `اليوم ${i + 1} - ${n + 1}. ${s.name}`, desc: [s.desc, s.note && "ملاحظة: " + s.note, `${s.city} - ${s.country}`].filter(Boolean).join("\n\n"),
-    lat: s.lat, lng: s.lng, color: COLORS[i % COLORS.length] })))
-    .concat(T.area.map(s => ({ name: (s.gem ? "★ " : "") + s.name, desc: `${s.desc}\n\n${s.city} - ${s.country} · ${s.cat}`, lat: s.lat, lng: s.lng, color: APP_COLOR[s.cat] })))
-    .concat(T.hotel ? [{ name: "🏨 " + T.hotel.name, desc: "فندقك", lat: T.hotel.lat, lng: T.hotel.lng, color: "red" }] : []))));
   const Locate = L.Control.extend({ options: { position: "topleft" }, onAdd: () => {
     const b = L.DomUtil.create("button", "locate leaflet-bar"); b.title = "موقعي"; b.setAttribute("aria-label", "موقعي"); b.textContent = "◎";
     L.DomEvent.on(b, "click", e => { L.DomEvent.stop(e); startLocate(); }); return b; } });
@@ -277,6 +265,8 @@ function render(T) {
   $("locBtn").addEventListener("click", startLocate);
   cur.T = T; T.days.length ? showDay(T, first) : showArea(T);
   showHotel(); busTick(); setInterval(busTick, 15000);
+  setTimeout(() => fetchStore(T), 5000); // markets and fuel stations for offline use
+  saveOffline(T); // the page, its photos and libraries, kept on the phone for use without internet
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("../../sw.js", { scope: "../../" }).catch(() => {});
 }
 // Area map (pocket guide): every atlas place in the trip's countries; tap one and go. Sorted nearest first once located.
@@ -331,6 +321,24 @@ function showArea(T, keep) {
   };
   if (me) updateEta(me);
 }
+// Weather for a day of the program (Open-Meteo, forecast up to 16 days ahead) at its first stop, kept for offline use.
+const WX = "map-wx-" + ID, WXC = [[0, "☀️", "صحو"], [2, "🌤️", "غائم جزئياً"], [3, "☁️", "غائم"], [48, "🌫️", "ضباب"], [57, "🌦️", "رذاذ"], [67, "🌧️", "مطر"], [77, "❄️", "ثلج"], [82, "🌧️", "زخات مطر"], [86, "❄️", "زخات ثلج"], [99, "⛈️", "عواصف رعدية"]];
+async function dayWeather(d) {
+  const at = d.sites[0] || cur.T.hotel || cur.T.area[0]; if (!at) return;
+  const today = new Date(now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10), day = d.date || today;
+  const ahead = (new Date(day + "T12:00") - new Date(today + "T12:00")) / 864e5, el = () => cur.i >= 0 && cur.T.days[cur.i] === d && $("wx");
+  if (ahead < 0) return; if (ahead > 15) { if (el()) el().textContent = "🌡️ توقعات الطقس تظهر قبل اليوم بـ 16 يوم."; return; }
+  const key = day + "|" + at.lat.toFixed(1) + "|" + at.lng.toFixed(1), all = ls.get(WX) || {}, hit = all[key];
+  const show = w => { if (el()) el().textContent = w; };
+  if (hit) show(hit.w);
+  if ((hit && Date.now() - hit.at < 3 * 36e5) || !navigator.onLine) return;
+  try {
+    const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${at.lat}&longitude=${at.lng}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=auto&start_date=${day}&end_date=${day}`)).json();
+    const D = j.daily, c = WXC.find(([m]) => D.weather_code[0] <= m) || WXC[WXC.length - 1];
+    const w = `${c[1]} الطقس: ${c[2]} · ${Math.round(D.temperature_2m_max[0])}° / ${Math.round(D.temperature_2m_min[0])}°${D.precipitation_probability_max[0] ? " · احتمال مطر " + D.precipitation_probability_max[0] + "%" : ""} · رياح ${Math.round(D.wind_speed_10m_max[0])} كم/س`;
+    all[key] = { w, at: Date.now() }; ls.set(WX, all); show(w);
+  } catch {}
+}
 function showDay(T, i) {
   $("day").onclick = null;
   const d = T.days[i]; layer.clearLayers(); cur.i = i; geoTimes = null; geoAt = null;
@@ -339,7 +347,7 @@ function showDay(T, i) {
   d.sites.forEach((s, n) => L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [28, 28], html: `<div class="npin">${n + 1}</div>` }) })
     .bindPopup(`<b>${esc(s.name)}</b>`).addTo(layer));
   if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 14 });
-  $("day").innerHTML = `<div class="day-head"><h2>اليوم ${i + 1}${d.title ? ": " + esc(d.title) : ""}</h2>${d.date ? `<p>📅 ${esc(dayLong(d.date))}</p>` : ""}${d.note ? `<p>${esc(d.note)}</p>` : ""}</div>`
+  $("day").innerHTML = `<div class="day-head"><h2>اليوم ${i + 1}${d.title ? ": " + esc(d.title) : ""}</h2>${d.date ? `<p>📅 ${esc(dayLong(d.date))}</p>` : ""}<p class="wx" id="wx"></p>${d.note ? `<p>${esc(d.note)}</p>` : ""}</div>`
     + d.sites.map((s, n) => (n ? `<div class="leg">↓ ${km(d.sites[n - 1], s).toFixed(1)} كم</div>` : "") + `<article class="stop">
       ${s.img ? `<img src="${esc(s.img)}" alt="${esc(s.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
       <div class="body"><h3><span class="num">${n + 1}</span>${esc(s.name)}</h3>
@@ -348,6 +356,7 @@ function showDay(T, i) {
       <p>${esc(s.desc)}</p>${s.note ? `<p><b>ملاحظة:</b> ${esc(s.note)}</p>` : ""}
       <button class="btn" onclick="goTo('d', ${n})">🧭 انطلق إلى هنا</button></div></article>`).join("");
   if (Geo.last) updateEta(Geo.last);
+  dayWeather(d);
 }
 // My location: blue dot, distance and driving / walking time to each stop of the shown day, nearest stop marked.
 // "Go" opens the offline guide screen (GPS + compass), from the map popups, area cards and day stops.
@@ -357,6 +366,7 @@ const dayLong = s => new Date(s + "T12:00").toLocaleDateString("ar", { weekday: 
 function goTo(k, n) { Geo.guide(k === "a" ? area.list[n] : cur.T.days[cur.i].sites[n]); }
 function startLocate() { Geo.locate(map, updateEta); }
 async function updateEta(me) {
+  sendLoc(me);
   if (cur.i === -2) { if (!serv.at || Geo.km(serv.at, me) > 1) { serv.at = me; showServices(); } return; } // services: search around me
   if (cur.i < 0 && (!area.at || Geo.km(area.at, me) > 1)) { area.at = me; showArea(cur.T, true); return; } // re-sort nearest first
   const stops = cur.i < 0 ? area.list.slice(0, area.shown) : cur.T.days[cur.i].sites;
@@ -472,12 +482,12 @@ function gate() {
   let inner;
   if (isIOS && !standalone) inner = `<div class="big">📲</div><h2>أضف الخريطة للشاشة الرئيسية</h2>${renew}<p>عشان توصلك تنبيهات الباص ورسائل قائد الرحلة حتى والجوال مقفل:<br>١. اضغط زر المشاركة <b>⬆️</b> تحت في Safari.<br>٢. اختر <b>«إضافة إلى الشاشة الرئيسية»</b>.<br>٣. افتح الخريطة من أيقونتها في الشاشة الرئيسية واسمح بالتنبيهات.</p>`;
   else if (!("serviceWorker" in navigator) || !("PushManager" in window) || !window.Notification) inner = `<div class="big">🔔</div><h2>المتصفح ما يدعم التنبيهات</h2><p>افتح رابط الخريطة في Chrome (أندرويد) أو Safari (آيفون) عشان تستخدم الخدمة.</p>`;
-  else inner = `<div class="big">🔔</div><h2>فعّل التنبيهات</h2>${renew}<p>الخدمة تحتاج السماح بالتنبيهات عشان توصلك مواعيد الباص ورسائل قائد الرحلة حتى والجوال مقفل. السماح صالح ${CONSENT_DAYS} يوم.</p>
+  else inner = `<div class="big">🔔</div><h2>فعّل التنبيهات</h2>${renew}<p>الخدمة تحتاج السماح بالتنبيهات عشان توصلك مواعيد الباص ورسائل قائد الرحلة حتى والجوال مقفل. السماح صالح ${CONSENT_DAYS} يوم.<br>وبعدها يسألك عن الموقع: يشوف قائد الرحلة آخر موقع لك وقت الرحلة عشان ما يضيع أحد (تقدر توقفه من الخريطة).</p>
     <button class="btn" id="allow">🔔 السماح بالتنبيهات</button>${Notification.permission === "denied" ? '<p style="margin-top:10px">التنبيهات مقفولة لهذه الصفحة: افتح إعدادات المتصفح ← إعدادات الموقع ← الإشعارات ← سماح، ثم اضغط الزر.</p>' : ""}<div class="msg" id="gateMsg"></div>`;
   el.innerHTML = `<div class="box">${inner}</div>`; document.body.append(el);
   const b = el.querySelector("#allow"); if (b) b.onclick = async () => {
     b.disabled = true; $("gateMsg").textContent = "";
-    try { await subscribe(true); el.remove(); beep(); }
+    try { await subscribe(true); el.remove(); beep(); locTick(true); }
     catch (e) { b.disabled = false; $("gateMsg").textContent = e === "denied" ? "ما تم السماح. اضغط «سماح» لما يسألك المتصفح." : "تعذر التفعيل. تأكد من الإنترنت وحاول مرة ثانية."; }
   };
 }
@@ -508,12 +518,12 @@ async function inbox() {
   let j; try { j = await (await fetch(`${S.url}/inbox?dev=${encodeURIComponent(S.dev)}&since=0`)).json(); } catch { return; }
   if (j.kicked) { store.del(); localStorage.removeItem(DEV); try { sessionStorage.setItem("map-expired", ID + "|kicked"); } catch {} return location.reload(); }
   const msgs = j.msgs || [], seen = ls.get(SEEN), last = msgs.length ? msgs[msgs.length - 1].id : 0;
-  S.mute = j.mute || 0; S.ackd = j.ack || 0; showMute(); drawPoints(msgs);
+  S.mute = j.mute || 0; S.ackd = j.ack || 0; showMute(); drawPoints(j.points || []);
   // Bus times from the server join those in the map file (the bar, the list and the alarms use both).
   let added = false;
   for (const m of msgs) if (m.kind === "bus" && m.t && !(cur.T.bus || []).some(b => b.t === m.t)) { (cur.T.bus ||= []).push({ t: m.t, place: m.place || "" }); added = true; }
   if (added) busTick();
-  $("msgCard").hidden = !msgs.length;
+  $("msgCard").hidden = false; // the leader-location and mute buttons live here too
   $("msgList").innerHTML = msgs.slice().reverse().map(m => `<li>${esc(m.text)}${m.kind === "point" ? ` <button class="btn ghost" style="height:32px;padding:0 10px;font-size:13px" onclick="goPoint(${m.id})">🧭 انطلق</button>` : ""}<small>${esc(WHO[m.who] || "")} · ${esc(new Date(m.at).toLocaleString("ar", { weekday: "long", hour: "numeric", minute: "2-digit" }))}</small></li>`).join("");
   if (seen !== null) { const fresh = msgs.filter(m => m.id > seen && now() - m.at < 30 * 6e4 && (m.kind === "msg" || m.kind === "point")); if (fresh.length && !muted()) msgAlarm(fresh[fresh.length - 1]); }
   if (last && last !== seen) { ls.set(SEEN, last); pushCfg(last).catch(() => {}); }
@@ -541,81 +551,108 @@ function showMute() {
 }
 document.addEventListener("click", async e => { if (e.target.id !== "muteBtn" || !S) return; const until = muted() ? 0 : midnight();
   try { const r = await post("/mute", { dev: S.dev, until }); if (!r.ok) throw 0; S.mute = until; showMute(); } catch { $("muteNote").textContent = "تعذر التغيير. تأكد من الإنترنت."; } });
+// The phone's position goes to the trip leader's map (every 2 minutes while the map is open, only once location is
+// allowed); the traveler can turn it off.
+const SHARE = "map-share-" + ID, GEO_OK = "map-geo-ok";
+const sharing = () => { try { return localStorage.getItem(SHARE) !== "0"; } catch { return true; } };
+let locSent = 0;
+function sendLoc(p) { if (!S || !sharing() || Date.now() - locSent < 6e4) return; locSent = Date.now();
+  try { localStorage.setItem(GEO_OK, "1"); } catch {} post("/loc", { dev: S.dev, lat: +p.lat.toFixed(5), lng: +p.lng.toFixed(5) }).catch(() => {}); }
+async function locTick(ask) {
+  if (!S || !sharing() || document.hidden || !navigator.onLine || !navigator.geolocation) return;
+  if (!ask) { let st = null; try { st = navigator.permissions && (await navigator.permissions.query({ name: "geolocation" })).state; } catch {}
+    if (st ? st !== "granted" : !ls.get(GEO_OK)) return; } // never prompts by itself
+  navigator.geolocation.getCurrentPosition(p => sendLoc({ lat: p.coords.latitude, lng: p.coords.longitude }), () => {}, { maximumAge: 6e4, timeout: 2e4 });
+}
+function showShare() { const b = $("shareBtn"); if (b) b.textContent = sharing() ? "📍 موقعي يظهر لقائد الرحلة: إيقاف" : "📍 أظهر موقعي لقائد الرحلة"; }
+document.addEventListener("click", e => { if (e.target.id !== "shareBtn") return; try { localStorage.setItem(SHARE, sharing() ? "0" : "1"); } catch {} showShare(); if (sharing()) { locSent = 0; locTick(true); } });
 // Meeting points from the trip leader: a pin on the map with "go".
 let points = [];
-function drawPoints(msgs) {
-  points = msgs.filter(m => m.kind === "point" && m.lat != null); if (!pts) return; pts.clearLayers();
-  for (const p of points) L.marker([p.lat, p.lng], { zIndexOffset: 900, icon: L.divIcon({ className: "", iconSize: [32, 32], html: '<div class="hpin">📍</div>' }) })
-    .bindPopup(`<div class="pop"><b>${esc(p.place || "نقطة التقاء")}</b><div>${esc(p.text)}</div>${Geo.last ? Geo.line(Geo.last, p) : ""}<button class="btn" onclick="goPoint(${p.id})">🧭 انطلق</button></div>`).addTo(pts);
+function drawPoints(list) {
+  points = list; if (!pts) return; pts.clearLayers();
+  for (const p of points) L.marker([p.lat, p.lng], { zIndexOffset: 900, icon: L.divIcon({ className: "", iconSize: [32, 32], iconAnchor: [16, 30], html: '<div class="hpin">📍</div>' }) })
+    .bindPopup(() => `<div class="pop">${p.img ? `<img src="${esc(S.url)}/img?id=${esc(p.img)}" alt="" onerror="this.remove()">` : ""}<b>${esc(p.place || "نقطة التقاء")}</b>${p.note ? `<div>${esc(p.note)}</div>` : ""}
+      <div style="font-size:12px;color:#777">من قائد الرحلة</div>${Geo.last ? Geo.line(Geo.last, p) : ""}<button class="btn" onclick="goPoint(${p.id})">🧭 انطلق</button></div>`).addTo(pts);
 }
 function goPoint(id) { const p = points.find(x => x.id === id); if (p) Geo.guide({ name: p.place || "نقطة التقاء", city: "نقطة التقاء", lat: p.lat, lng: p.lng }); }
-// Nearby services (OpenStreetMap, needs internet): around my location, or the map's center. The last results of each
-// kind are kept on the phone, so they still show offline.
-// Each kind also has a Google Maps search around the same spot (always works when online, opens the maps app).
-const GTERM = { mall: "مجمع تجاري", mosque: "مسجد", exchange: "صرافة", atm: "صراف آلي", car: "تأجير سيارات", cinema: "سينما", pharmacy: "صيدلية", hospital: "مستشفى" };
-const gmaps = (key, at) => `https://www.google.com/maps/search/${encodeURIComponent(GTERM[key])}/@${at.lat.toFixed(5)},${at.lng.toFixed(5)},15z`;
-const SERV = [["mall", "🛍️ مجمعات وأسواق", ['nwr["shop"="mall"]', 'nwr["amenity"="marketplace"]', 'nwr["shop"="department_store"]']],
-  ["mosque", "🕌 مساجد", ['nwr["amenity"="place_of_worship"]["religion"="muslim"]']], ["exchange", "💱 صرافة", ['nwr["amenity"="bureau_de_change"]']],
-  ["atm", "🏧 صراف آلي", ['nwr["amenity"="atm"]']], ["car", "🚗 تأجير سيارات", ['nwr["amenity"="car_rental"]']], ["cinema", "🎬 سينما", ['nwr["amenity"="cinema"]']],
-  ["pharmacy", "💊 صيدليات", ['nwr["amenity"="pharmacy"]']], ["hospital", "🏥 مستشفيات", ['nwr["amenity"="hospital"]']]];
-const SERVKEY = "map-serv-" + ID, serv = { cat: "mall", km: 3, list: [] };
+// Nearby services (OpenStreetMap search, needs internet) around my location or the map's center. Markets and fuel
+// stations of the trip's cities are fetched once when online and kept on the phone, so they also work offline; for
+// the other kinds the last results are kept. Each kind also has a Google Maps search around the same spot.
+const SERV = [["mall", "🛍️ أسواق ومجمعات", ["mall", "supermarket", "marketplace"], "سوق"], ["fuel", "⛽ محطات وقود", ["fuel"], "محطة وقود"],
+  ["mosque", "🕌 مساجد", ["مسجد"], "مسجد"], ["exchange", "💱 صرافة", ["bureau de change"], "صرافة"], ["atm", "🏧 صراف آلي", ["atm"], "صراف آلي"],
+  ["car", "🚗 تأجير سيارات", ["car rental"], "تأجير سيارات"], ["cinema", "🎬 سينما", ["cinema"], "سينما"], ["pharmacy", "💊 صيدليات", ["pharmacy"], "صيدلية"], ["hospital", "🏥 مستشفيات", ["hospital"], "مستشفى"]];
+const OFFLINE_KINDS = ["mall", "fuel"], SERVKEY = "map-serv-" + ID, STORE = "map-svc-" + ID, serv = { cat: "mall", km: 3, list: [] };
+const gmaps = (term, at) => `https://www.google.com/maps/search/${encodeURIComponent(term)}/@${at.lat.toFixed(5)},${at.lng.toFixed(5)},15z`;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+async function nomi(term, at, km) {
+  const dy = km / 111, dx = dy / Math.cos(at.lat * Math.PI / 180), vb = [at.lng - dx, at.lat + dy, at.lng + dx, at.lat - dy].map(x => x.toFixed(4)).join(",");
+  const stop = new AbortController(), tm = setTimeout(() => stop.abort(), 1e4);
+  try { const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=40&bounded=1&accept-language=ar&viewbox=${vb}&q=${encodeURIComponent(term)}`, { signal: stop.signal });
+    if (!r.ok) return null; return (await r.json()).map(x => ({ name: x.name || x.display_name.split(",")[0], lat: +(+x.lat).toFixed(5), lng: +(+x.lon).toFixed(5), addr: x.display_name.split(",").slice(1, 3).join("،").trim() })); }
+  catch { return null; } finally { clearTimeout(tm); }
+}
+const dedup = list => { const seen = new Set(); return list.filter(s => { const k = s.name + "|" + s.lat.toFixed(4) + "|" + s.lng.toFixed(4); return !seen.has(k) && seen.add(k); }); };
+async function search(kind, at, km) {
+  let all = [], ok = false;
+  for (const [n, term] of kind[2].entries()) { if (n) await wait(1100); const r = await nomi(term, at, km); if (r) { ok = true; all = all.concat(r); } } // one request a second
+  return ok ? dedup(all) : null;
+}
+// Once a week, online: markets and fuel around each of the trip's main cities (up to 8), kept on the phone.
+async function fetchStore(T) {
+  const st = ls.get(STORE); if ((st && Date.now() - st.at < 7 * 864e5) || !navigator.onLine) return;
+  const by = {}; for (const s of T.area) (by[s.country + "|" + s.city] ||= []).push(s);
+  const cities = Object.values(by).sort((a, b) => b.length - a.length).slice(0, 8).map(l => ({ lat: l.reduce((x, s) => x + s.lat, 0) / l.length, lng: l.reduce((x, s) => x + s.lng, 0) / l.length }));
+  if (T.hotel) cities.unshift({ lat: T.hotel.lat, lng: T.hotel.lng });
+  const out = { at: Date.now(), mall: [], fuel: [] };
+  for (const c of cities) for (const k of OFFLINE_KINDS) { const r = await search(SERV.find(x => x[0] === k), c, 8); if (r) out[k] = dedup(out[k].concat(r)).slice(0, 600); await wait(1100); }
+  if (out.mall.length || out.fuel.length) ls.set(STORE, out);
+}
 async function showServices() {
   layer.clearLayers(); cur.i = -2; $("day").onclick = null;
-  const [key, label, sel] = SERV.find(x => x[0] === serv.cat), me = Geo.last, c = me || map.getCenter(), at = { lat: c.lat, lng: c.lng };
-  const head = () => `<div class="day-head"><h2>🛎️ خدمات قريبة</h2><p>${me ? "حول موقعك" : "حول وسط الخريطة. اضغط «📍 موقعي» عشان تبحث حولك"}، في حدود ${serv.km} كم. بدون إنترنت: تطبيق Organic Maps فيه كل هذي الخدمات.</p></div>
+  const kind = SERV.find(x => x[0] === serv.cat), [key, label, , gterm] = kind, me = Geo.last, c = me || map.getCenter(), at = { lat: c.lat, lng: c.lng };
+  const head = () => `<div class="day-head"><h2>🛎️ خدمات قريبة</h2><p>${me ? "حول موقعك" : "حول وسط الخريطة. اضغط «📍 موقعي» عشان تبحث حولك"}، في حدود ${serv.km} كم.${OFFLINE_KINDS.includes(key) ? " الأسواق ومحطات الوقود محفوظة على جوالك وتطلع بدون إنترنت." : ""}</p></div>
     <div class="cats" id="scats">${SERV.map(([k, l]) => `<button class="chip" data-s="${k}" aria-pressed="${k === serv.cat}">${l}</button>`).join("")}</div>`;
-  $("day").innerHTML = head() + '<p class="offline-note" style="padding:12px 16px">جارٍ البحث…</p>';
-  $("scats").onclick = e => { const b = e.target.closest("[data-s]"); if (b) { serv.cat = b.dataset.s; serv.km = 3; showServices(); } };
-  const saved = ls.get(SERVKEY) || {};
-  let list = null, note = "";
-  if (navigator.onLine) {
-    const query = `[out:json][timeout:20];(${sel.map(s => `${s}(around:${serv.km * 1000},${at.lat},${at.lng});`).join("")});out center 60;`;
-    for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) {
-      const stop = new AbortController(), tm = setTimeout(() => stop.abort(), 8000); // a busy server must not leave the page waiting
-      try { const r = await fetch(ep, { method: "POST", signal: stop.signal, body: "data=" + encodeURIComponent(query), headers: { "content-type": "application/x-www-form-urlencoded" } }); clearTimeout(tm);
-        if (!r.ok) continue; const j = await r.json();
-        list = j.elements.map(e => ({ name: (e.tags && (e.tags["name:ar"] || e.tags.name || e.tags["name:en"])) || label.slice(3), hours: e.tags && e.tags.opening_hours || "",
-          lat: e.lat ?? e.center?.lat, lng: e.lon ?? e.center?.lon })).filter(x => x.lat != null);
-        saved[key] = { at, km: serv.km, list, when: Date.now() }; ls.set(SERVKEY, saved); break; } catch {} finally { clearTimeout(tm); }
-    }
-  }
-  if (!list && saved[key]) { list = saved[key].list; note = "بدون إنترنت: هذي آخر نتائج محفوظة على جوالك."; }
+  const bind = () => { $("scats").onclick = e => { const b = e.target.closest("[data-s]"); if (b) { serv.cat = b.dataset.s; serv.km = 3; showServices(); } }; };
+  $("day").innerHTML = head() + '<p class="offline-note" style="padding:12px 16px">جارٍ البحث…</p>'; bind();
+  const saved = ls.get(SERVKEY) || {}, store = ls.get(STORE);
+  let list = navigator.onLine ? await search(kind, at, serv.km) : null, note = "";
+  if (list) { saved[key] = { at, list, when: Date.now() }; ls.set(SERVKEY, saved); }
+  else if (OFFLINE_KINDS.includes(key) && store && store[key].length) { list = store[key].filter(s => Geo.km(at, s) <= Math.max(serv.km, 25)); note = navigator.onLine ? "" : "بدون إنترنت: من القائمة المحفوظة على جوالك."; }
+  else if (saved[key]) { list = saved[key].list; note = "بدون إنترنت: هذي آخر نتائج محفوظة على جوالك."; }
   if (cur.i !== -2) return; // the traveler moved to another tab meanwhile
-  const gBtn = `<div style="padding:4px 16px 12px"><a class="btn" style="width:100%" target="_blank" rel="noopener" href="${gmaps(key, at)}">🔎 ابحث عن ${esc(GTERM[key])} في خرائط جوجل</a></div>`;
-  if (!list) { $("day").innerHTML = head() + (navigator.onLine ? '<p class="offline-note" style="padding:12px 16px">خدمة البحث مشغولة الحين. استخدم زر خرائط جوجل:</p>' + gBtn : '<p class="offline-note" style="padding:12px 16px">تحتاج إنترنت للبحث عن الخدمات. بدون إنترنت استخدم تطبيق Organic Maps.</p>'); $("scats").onclick = e => { const b = e.target.closest("[data-s]"); if (b) { serv.cat = b.dataset.s; showServices(); } }; return; }
-  list.sort((a, b) => Geo.km(at, a) - Geo.km(at, b)); serv.list = list;
-  for (const [n, s] of list.entries()) L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [26, 26], html: `<div class="hpin" style="font-size:20px;line-height:26px">${label.split(" ")[0]}</div>` }) })
-    .bindPopup(`<div class="pop"><b>${esc(s.name)}</b>${s.hours ? `<div dir="ltr">${esc(s.hours)}</div>` : ""}${Geo.last ? Geo.line(Geo.last, s) : ""}<button class="btn" onclick="goServ(${n})">🧭 انطلق</button></div>`).addTo(layer);
+  const gBtn = navigator.onLine ? `<div style="padding:4px 16px 12px"><a class="btn ghost" style="width:100%" target="_blank" rel="noopener" href="${gmaps(gterm, at)}">🔎 ابحث عن ${esc(gterm)} في خرائط جوجل</a></div>` : "";
+  if (!list) { $("day").innerHTML = head() + `<p class="offline-note" style="padding:12px 16px">${navigator.onLine ? "خدمة البحث مشغولة الحين. استخدم زر خرائط جوجل:" : "تحتاج إنترنت للبحث عن هذي الخدمة."}</p>` + gBtn; bind(); return; }
+  list = list.slice().sort((a, b) => Geo.km(at, a) - Geo.km(at, b)); serv.list = list;
+  const icon = label.split(" ")[0];
+  for (const [n, s] of list.slice(0, 80).entries()) L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "", iconSize: [26, 26], html: `<div class="hpin" style="font-size:20px;line-height:26px">${icon}</div>` }) })
+    .bindPopup(`<div class="pop"><b>${esc(s.name)}</b>${s.addr ? `<div>${esc(s.addr)}</div>` : ""}${Geo.last ? Geo.line(Geo.last, s) : ""}<button class="btn" onclick="goServ(${n})">🧭 انطلق</button></div>`).addTo(layer);
   if (list.length) map.fitBounds(L.latLngBounds(list.slice(0, 15).map(s => [s.lat, s.lng]).concat([[at.lat, at.lng]])).pad(0.15), { maxZoom: 16 });
   $("day").innerHTML = head() + (note ? `<p class="offline-note" style="padding:8px 16px 0">${note}</p>` : "")
-    + (list.length ? list.slice(0, 40).map((s, n) => `<article class="place" style="grid-template-columns:44px 1fr"><div class="thumb ph" style="width:44px;height:44px;font-size:22px;background:var(--bg)">${label.split(" ")[0]}</div>
-      <div><h3>${esc(s.name)}</h3><div class="meta">${Geo.km(at, s).toFixed(1)} كم${s.hours ? " · " + esc(s.hours) : ""}</div>
+    + (list.length ? list.slice(0, 40).map((s, n) => `<article class="place" style="grid-template-columns:44px 1fr"><div class="thumb ph" style="width:44px;height:44px;font-size:22px;background:var(--bg)">${icon}</div>
+      <div><h3>${esc(s.name)}</h3><div class="meta">${Geo.km(at, s).toFixed(1)} كم${s.addr ? " · " + esc(s.addr) : ""}</div>
       <div class="go"><button class="btn" onclick="goServ(${n})">🧭 انطلق</button><button class="btn ghost" data-sv="${n}">على الخريطة</button></div></div></article>`).join("")
-      : `<p class="offline-note" style="padding:12px 16px">ما لقينا ${esc(label.slice(3))} في حدود ${serv.km} كم.</p>`)
-    + (navigator.onLine ? gBtn : "") + (serv.km < 20 && navigator.onLine ? `<button class="btn ghost more" id="wider">وسّع البحث إلى ${serv.km < 10 ? 10 : 25} كم</button>` : "");
-  $("scats").onclick = e => { const b = e.target.closest("[data-s]"); if (b) { serv.cat = b.dataset.s; serv.km = 3; showServices(); } };
+      : `<p class="offline-note" style="padding:12px 16px">ما لقينا ${esc(gterm)} في حدود ${serv.km} كم.</p>`)
+    + gBtn + (serv.km < 20 && navigator.onLine ? `<button class="btn ghost more" id="wider">وسّع البحث إلى ${serv.km < 10 ? 10 : 25} كم</button>` : "");
+  bind();
   $("day").onclick = e => {
     if (e.target.id === "wider") { serv.km = serv.km < 10 ? 10 : 25; showServices(); return; }
     const b = e.target.closest("[data-sv]"); if (!b) return; const s = serv.list[+b.dataset.sv];
     $("tmap").scrollIntoView({ behavior: "smooth" }); map.setView([s.lat, s.lng], 17);
   };
 }
-function goServ(n) { const s = serv.list[n], l = SERV.find(x => x[0] === serv.cat)[1]; if (s) Geo.guide({ name: s.name, city: l.slice(3), lat: s.lat, lng: s.lng }); }
+function goServ(n) { const s = serv.list[n], k = SERV.find(x => x[0] === serv.cat); if (s) Geo.guide({ name: s.name, city: k[3], lat: s.lat, lng: s.lng }); }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S) { inbox(); if (document.querySelector(".gate") || !S.consent) gate(); } });
 async function saveOffline(T) {
-  const btn = $("save"); btn.disabled = true; btn.textContent = "جارٍ الحفظ…";
   try {
-    if (!("serviceWorker" in navigator) || !window.caches) throw 0;
+    if (!("serviceWorker" in navigator) || !window.caches) return;
     await navigator.serviceWorker.ready;
     const c = await caches.open(CACHE);
-    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw17ktwl", "../../vendor/leaflet.css", "../../style.css?v=mw17ktwl", "manifest.webmanifest"]
+    const urls = [location.href.split("#")[0], "../../vendor/leaflet.js", "../../geo.js?v=mw1vpf1o", "../../vendor/leaflet.css", "../../style.css?v=mw1vpf1o", "manifest.webmanifest"]
       .map(u => new URL(u, location.href).href);
     const imgs = [...T.days.flatMap(d => d.sites.map(s => s.img)), ...T.area.map(s => s.img)].filter(Boolean);
     await Promise.all(urls.map(u => c.add(u).catch(() => {})));
     await Promise.all(imgs.map(u => fetch(u, { mode: "no-cors", referrerPolicy: "no-referrer" }).then(r => c.put(u, r)).catch(() => {})));
-    btn.textContent = "✓ محفوظة على جهازك";
-    $("off").textContent = "تم الحفظ. ستفتح الرحلة وصورها بدون إنترنت، وتُحفظ أجزاء الخريطة التي تتصفحها الآن. وللملاحة بدون إنترنت استخدم زر «محطات الرحلة لتطبيق الخرائط».";
-  } catch { btn.disabled = false; btn.textContent = "حفظ للاستخدام بدون إنترنت"; $("off").textContent = "تعذر الحفظ على هذا المتصفح. جرّب Safari أو Chrome."; }
+  } catch {}
 }
 </script>
 </body>
